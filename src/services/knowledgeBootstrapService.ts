@@ -4,6 +4,7 @@ import { AMO_SELF_KNOWLEDGE } from '../data/amoSelfKnowledge';
 import { buildHelpKnowledgeChunks } from '../data/amoHelpData';
 import { vectorDbService } from './vectorDbService';
 import { knowledgeStoreService } from './knowledgeStoreService';
+import { amoBrainService } from './amoBrainService';
 
 const AMO_COMMUNICATION_STYLE = {
   id: 'amo-communication-style',
@@ -23,15 +24,6 @@ When asked about NZ: speak with familiarity, like someone from here.
 Slang: use sparingly and naturally. "Bro" at most once. "Sweet as", "choice", "yeah nah" are fine.`,
 };
 
-const SEED_EXCHANGES = [
-  { q: 'kia ora', a: 'Kia ora. What do you need?' },
-  { q: 'what can you do', a: 'I can chat, search the web, run commands, create files, and remember things. What do you want to do?' },
-  { q: 'open the terminal', a: 'Opening terminal.' },
-  { q: 'search for nz news', a: 'Searching now.' },
-  { q: 'who are you', a: "I'm Amo. AI assistant from Aotearoa, made by Te Amo Wilson. What do you need?" },
-  { q: 'can you help me code', a: 'Yeah. What are you building?' },
-];
-
 async function bootstrapCommunicationStyle(): Promise<void> {
   const existingDocs = await knowledgeStoreService.listDocuments();
   const existingDoc = existingDocs.find(doc => doc.document_id === AMO_COMMUNICATION_STYLE.id);
@@ -49,22 +41,6 @@ async function bootstrapCommunicationStyle(): Promise<void> {
     },
   });
   console.info('[AskAmo] Bootstrapped communication style');
-
-  for (const ex of SEED_EXCHANGES) {
-    await vectorDbService.addDocument({
-      id: `seed-exchange-${ex.q.replace(/\s+/g, '-')}`,
-      documentId: 'amo-seed-exchanges',
-      documentName: 'Example exchanges',
-      content: `User: ${ex.q}\nAmo: ${ex.a}`,
-      metadata: {
-        assetKind: 'skill',
-        source: 'system',
-        tags: ['communication', 'example', 'style'],
-        weight: 9,
-      },
-    });
-  }
-  console.info(`[AskAmo] Bootstrapped ${SEED_EXCHANGES.length} seed exchanges`);
 }
 
 async function bootstrapSelfKnowledge(): Promise<void> {
@@ -113,56 +89,148 @@ async function bootstrapHelpKnowledge(): Promise<void> {
 }
 
 export const knowledgeBootstrapService = {
-  /**
-   * Bootstraps Amo's brain with core knowledge if it hasn't been done yet
-   * or if the version has changed.
-   */
-  async bootstrapAmoBrain() {
+  async bootstrapAmoBrain(): Promise<void> {
+    console.info('[Bootstrap] Starting brain population...');
+
     await vectorDbService.init();
-    
-    // First, load Amo's self-knowledge
+    await vectorDbService.loadFromStorage();
+
     await bootstrapSelfKnowledge();
-
-    // Load help commands and templates
     await bootstrapHelpKnowledge();
-
-    // Load communication style and seed exchanges
     await bootstrapCommunicationStyle();
-    
-    // Get currently installed documents
-    const existingDocs = await knowledgeStoreService.listDocuments();
-    
-    for (const pack of [...AMO_STARTER_PACKS, ...CURATED_KNOWLEDGE_PACKS]) {
-      const existingDoc = existingDocs.find(doc => doc.document_id === pack.key);
-      const needsUpdate = !existingDoc || existingDoc.starter_pack_version !== pack.version;
-      
-      if (needsUpdate) {
-        if (existingDoc) {
-          console.info(`[AskAmo] Updating core knowledge to v${pack.version}: ${pack.name}`);
-          // Remove old version first to avoid chunk duplication if structure changed
-          await vectorDbService.removeDocument(pack.key);
-        } else {
-          console.info(`[AskAmo] Bootstrapping core knowledge v${pack.version}: ${pack.name}`);
-        }
+    await this.seedPermanentFacts();
+    await this.seedCommunicationExamples();
+    await this.seedStarterPackContent();
 
-        const metadataSource = CURATED_KNOWLEDGE_PACKS.some((curated) => curated.key === pack.key) ? 'curated' : 'starter-pack';
+    console.info('[Bootstrap] Brain population complete.');
+  },
 
+  async seedPermanentFacts(): Promise<void> {
+    const FACTS = [
+      {
+        scope: 'app:ask-amo',
+        title: 'Amo identity',
+        content: 'My name is Amo. I am an AI assistant from Aotearoa New Zealand, created by Te Amo Wilson. My name comes from my creator.',
+        tags: ['identity', 'who', 'creator', 'name', 'origin'],
+        weight: 10,
+      },
+      {
+        scope: 'app:ask-amo',
+        title: 'Amo location',
+        content: 'I am from Aotearoa New Zealand. I am grounded in NZ culture, Te Reo Maori, and Waikato-Tainui dialect.',
+        tags: ['location', 'nz', 'aotearoa', 'waikato', 'maori'],
+        weight: 10,
+      },
+      {
+        scope: 'app:ask-amo',
+        title: 'App name',
+        content: 'The app is called Ask-Amo. It is a local-first AI assistant that runs on Android.',
+        tags: ['app', 'ask-amo', 'android', 'name'],
+        weight: 9,
+      },
+      {
+        scope: 'app:ask-amo',
+        title: 'Amo capabilities summary',
+        content: 'Amo can chat, search the web, run terminal commands, create and edit files, read imported documents, remember conversations, and work offline using a local AI model.',
+        tags: ['capabilities', 'what can you do', 'features', 'skills'],
+        weight: 9,
+      },
+      {
+        scope: 'app:ask-amo',
+        title: 'Offline model',
+        content: 'Amo runs offline using a Phi-3.5 Mini 3.8B GGUF model on the device. No internet needed for basic chat.',
+        tags: ['offline', 'model', 'gguf', 'phi', 'local'],
+        weight: 8,
+      },
+      {
+        scope: 'app:ask-amo',
+        title: 'Device',
+        content: 'Running on a Samsung S20 5G with Snapdragon 865 and 12GB RAM.',
+        tags: ['device', 'samsung', 'android', 'hardware'],
+        weight: 8,
+      },
+      {
+        scope: 'app:ask-amo',
+        title: 'NZ public holidays',
+        content: "New Zealand public holidays: New Year's Day, Day after New Year's, Waitangi Day, Good Friday, Easter Monday, ANZAC Day, King's Birthday, Matariki, Labour Day, Christmas Day, Boxing Day, and regional Anniversary Days.",
+        tags: ['nz', 'holidays', 'public holiday', 'new zealand', 'matariki'],
+        weight: 7,
+      },
+      {
+        scope: 'app:ask-amo',
+        title: 'Te Reo Maori grounding',
+        content: 'Use Te Aka Maori Dictionary as authority for Maori words. Waikato-Tainui: wh sounds like f, r is a soft tap, ng as in sing, macron vowels held long.',
+        tags: ['maori', 'te reo', 'language', 'pronunciation', 'waikato'],
+        weight: 7,
+      },
+    ];
+
+    for (const fact of FACTS) {
+      await amoBrainService.remember(
+        fact.scope,
+        fact.title,
+        fact.content,
+        fact.tags,
+        fact.weight,
+      );
+    }
+    console.info(`[Bootstrap] Seeded ${FACTS.length} permanent facts.`);
+  },
+
+  async seedCommunicationExamples(): Promise<void> {
+    const EXCHANGES = [
+      { q: 'kia ora', a: 'Kia ora. What do you need?' },
+      { q: 'hey amo', a: "Yeah, I'm here. What do you need?" },
+      { q: 'who are you', a: "I'm Amo. AI assistant from Aotearoa, made by Te Amo Wilson. What can I help with?" },
+      { q: 'what can you do', a: 'I can chat, search the web, run terminal commands, create files, read your documents, and remember things you tell me. What do you want to do?' },
+      { q: 'where are you from', a: "I'm from Aotearoa New Zealand. Made here by Te Amo Wilson." },
+      { q: 'open the terminal', a: 'Opening terminal.' },
+      { q: 'search for nz news', a: 'Searching now.' },
+      { q: 'can you help me code', a: 'Yeah. What are you building?' },
+      { q: 'what time is it', a: 'Let me check the device clock for you.' },
+      { q: 'thanks', a: 'No worries.' },
+      { q: 'cheers bro', a: 'Sweet as.' },
+    ];
+
+    for (const ex of EXCHANGES) {
+      await amoBrainService.remember(
+        'app:ask-amo',
+        `Example: ${ex.q}`,
+        `User: ${ex.q}\nAmo: ${ex.a}`,
+        ['communication', 'example', 'style', 'conversation'],
+        9,
+      );
+    }
+    console.info(`[Bootstrap] Seeded ${EXCHANGES.length} communication examples.`);
+  },
+
+  async seedStarterPackContent(): Promise<void> {
+    for (const pack of AMO_STARTER_PACKS) {
+      await amoBrainService.remember(
+        'app:ask-amo',
+        pack.name,
+        pack.content,
+        ['starter-pack', pack.pillar, pack.key],
+        7,
+      );
+
+      const docId = `pack:${pack.key}`;
+      const docs = vectorDbService.getDocuments();
+      const exists = docs.find(d => d.documentId === docId);
+      if (!exists) {
         await vectorDbService.addDocument({
-          id: pack.key,
-          documentId: pack.key,
+          id: docId,
+          documentId: docId,
           documentName: pack.name,
           content: pack.content,
           metadata: {
             assetKind: pack.kind,
-            source: metadataSource,
-            pillar: pack.pillar,
+            source: 'starter-pack',
             starterPackKey: pack.key,
-            starterPackVersion: pack.version
-          }
+          },
         });
       }
-      }
-
-    console.info('[AskAmo] Core knowledge bootstrap synchronization complete.');
-  }
+    }
+    console.info(`[Bootstrap] Seeded ${AMO_STARTER_PACKS.length} starter packs.`);
+  },
 };
