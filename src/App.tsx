@@ -79,6 +79,7 @@ import { extractSlots, slotsToKnowledgeQuery, slotsToPromptHint } from './servic
 import { AVAILABLE_MODELS, type ModelConfig, type ChatSession } from './types';
 import { apiKeyStorage } from './services/apiKeyStorage';
 import { amoBrainService } from './services/amoBrainService';
+import { brainLearningService } from './services/brainLearningService';
 import type { ConversationMemoryRow, MemorySummaryRow, SeedPackRow, ToolRegistryRow } from './services/knowledgeStoreService';
 import { cn } from './lib/utils';
 
@@ -971,6 +972,8 @@ export default function App() {
         amoBrainService.summarize(appScope, 'conversation', currentChatId, summary, ['app', 'amo', 'exchange']),
       ]);
 
+      void brainLearningService.analyseAndLearn(userContent, assistantContent, currentChatId);
+
       await refreshBrainState();
     } catch (brainError) {
       console.error('[AskAmo] Failed to persist exchange to brain:', brainError);
@@ -978,7 +981,7 @@ export default function App() {
     }
   };
 
-  const resolveOfflineCommandReply = (command: string): string | null => {
+  const resolveOfflineCommandReply = async (command: string, userInput?: string): Promise<string | null> => {
     switch (command) {
       case 'show workspace status': {
         const docsCount = uploadedDocs.length;
@@ -1003,6 +1006,35 @@ export default function App() {
       }
       case 'show brain status': {
         return `Brain bootstrap v3 complete. Memory and knowledge layers are seeded.`;
+      }
+      case 'learn this': {
+        const content = userInput?.replace(/^learn this:?\s*/i, '').trim();
+        if (content) {
+          await amoBrainService.learnFact(content.slice(0, 50), content, ['user-taught']);
+          return `Got it. I've stored that permanently.`;
+        }
+        return 'What do you want me to learn? Say "learn this: [the thing]"';
+      }
+      case 'forget this': {
+        const topic = userInput?.replace(/^forget (this|about)?:?\s*/i, '').trim();
+        if (topic) {
+          await amoBrainService.forgetFact(topic);
+          return `Removed anything I had about "${topic}".`;
+        }
+        return null;
+      }
+      case 'what do you know about': {
+        const topic = userInput?.replace(/^what do you know about:?\s*/i, '').trim();
+        if (topic) {
+          const memories = await amoBrainService.getConversationMemory('app:ask-amo');
+          const relevant = memories.filter(m => {
+            const hay = `${m.title} ${m.content}`.toLowerCase();
+            return topic.toLowerCase().split(' ').some((word: string) => word.length > 3 && hay.includes(word));
+          });
+          if (relevant.length === 0) return `I don't have anything stored about "${topic}" yet.`;
+          return `I know ${relevant.length} thing${relevant.length === 1 ? '' : 's'} about "${topic}":\n\n${relevant.map(m => `- ${m.title}: ${m.content.slice(0, 100)}`).join('\n')}`;
+        }
+        return null;
       }
       default:
         return null;
@@ -1095,14 +1127,14 @@ export default function App() {
      }
 
      if (routedIntent.offlineCommand) {
-       const offlineReply = resolveOfflineCommandReply(routedIntent.offlineCommand);
-       if (offlineReply) {
-         addMessage('user', userPrompt, pendingImage || undefined);
-         const assistantId = addStreamingMessage('assistant');
-         activeAssistantMessageIdRef.current = assistantId;
-          updateMessage(assistantId, offlineReply, false);
-          finalizeMessage(assistantId);
-          await persistExchangeToBrain(userPrompt, offlineReply);
+      const offlineReply = await resolveOfflineCommandReply(routedIntent.offlineCommand, userPrompt);
+        if (offlineReply) {
+          addMessage('user', userPrompt, pendingImage || undefined);
+          const assistantId = addStreamingMessage('assistant');
+          activeAssistantMessageIdRef.current = assistantId;
+           updateMessage(assistantId, offlineReply, false);
+           finalizeMessage(assistantId);
+           await persistExchangeToBrain(userPrompt, offlineReply);
           setIsLoading(false);
          setAmoRuntimeState('waiting');
           return;

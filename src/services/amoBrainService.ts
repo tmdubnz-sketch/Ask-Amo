@@ -183,4 +183,52 @@ export const amoBrainService = {
 
     return lines.join('\n').trim();
   },
+
+  async learnFact(
+    topic: string,
+    content: string,
+    tags: string[],
+  ): Promise<void> {
+    const id = `learned:${topic.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+    await knowledgeStoreService.upsertConversationMemory({
+      id,
+      scope: 'app:ask-amo',
+      memoryType: 'learned-fact',
+      title: topic,
+      content,
+      tags: [...tags, 'self-learned', 'permanent'],
+      weight: 8,
+    });
+    console.info('[Brain] Amo learned:', topic);
+  },
+
+  async updateFact(topic: string, newContent: string): Promise<void> {
+    const memories = await knowledgeStoreService.listConversationMemory('app:ask-amo');
+    const existing = memories.find(m =>
+      m.title.toLowerCase().includes(topic.toLowerCase())
+    );
+    if (existing) {
+      const existingTags = JSON.parse(existing.tags_json || '[]');
+      await knowledgeStoreService.updateConversationMemory({
+        id: existing.id,
+        title: existing.title,
+        content: newContent,
+        tags: [...existingTags, 'updated'],
+        weight: existing.weight,
+      });
+    } else {
+      await this.learnFact(topic, newContent, ['updated']);
+    }
+  },
+
+  async forgetFact(topic: string): Promise<void> {
+    const memories = await knowledgeStoreService.listConversationMemory('app:ask-amo');
+    const toRemove = memories.filter(m =>
+      m.title.toLowerCase().includes(topic.toLowerCase()) &&
+      m.memory_type === 'learned-fact'
+    );
+    for (const m of toRemove) {
+      await knowledgeStoreService.deleteConversationMemory(m.id);
+    }
+  },
 };
