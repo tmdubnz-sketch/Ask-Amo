@@ -1613,7 +1613,7 @@ export default function App() {
 
             {activeView === 'webview' && (
               <div className="h-full max-w-4xl mx-auto w-full min-h-[420px]">
-                <WebView url={webViewUrl} onNavigate={(url) => console.log('[WebView] Navigated to:', url)} />
+                <WebView url={webViewUrl} onNavigate={(url) => setWebViewUrl(url)} />
               </div>
             )}
 
