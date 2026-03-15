@@ -20,7 +20,7 @@ import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { terminalService } from '../services/terminalService';
-import { runCode } from '../utils/codeRunner';
+import { runCode, runPython } from '../utils/codeRunner';
 import { cn } from '../lib/utils';
 
 export type CodeLanguage = 
@@ -268,18 +268,22 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         return;
       }
       
+      // Use Pyodide for Python (sandboxed offline execution)
+      if (language === 'python') {
+        const result = await runPython(code);
+        if (result.error) {
+          setRunOutput(`Error: ${result.error}`);
+        } else {
+          setRunOutput(result.output.join('\n') || 'Done.');
+        }
+        setIsRunning(false);
+        return;
+      }
+      
       // Fall back to terminal service for other languages
       let command: string;
       
-      if (language === 'python') {
-        const tempFile = `/tmp/${fileName}`;
-        await terminalService.exec({
-          command: `echo '${code.replace(/'/g, "'\\''")}' > ${tempFile}`,
-          sessionId: sessionIdRef.current,
-          timeoutMs: 5000,
-        });
-        command = `python3 ${tempFile}`;
-      } else if (language === 'shell') {
+      if (language === 'shell') {
         command = `echo '${code.replace(/'/g, "'\\''")}' | bash`;
       } else {
         const cmd = LANGUAGE_COMMANDS[language];
