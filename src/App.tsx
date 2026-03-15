@@ -511,7 +511,7 @@ export default function App() {
   const [toolRegistryRows, setToolRegistryRows] = useState<ToolRegistryRow[]>([]);
   const [seedPackRows, setSeedPackRows] = useState<SeedPackRow[]>([]);
 
-  const chatContainerRef = useRef<HTMLDivElement>(null);
+const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -742,6 +742,13 @@ export default function App() {
 
   const currentChat = chats.find((c) => c.id === currentChatId) || chats[0];
   const { messages, setMessages, addMessage, updateMessage, addStreamingMessage, finalizeMessage, clearMessages } = useMessages(currentChat?.messages || []);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   const isNativeOfflineAvailable = nativeOfflineLlmService.isAvailable();
   const localRuntimeState = resolveLocalRuntimeState({ nativeOfflineStatus, isNativeOfflineAvailable, loadedModelId });
@@ -1278,9 +1285,9 @@ export default function App() {
         try {
           const text = await groqService.transcribe(audioBlob);
           if (text.trim()) {
-            setInput((prev) => prev + (prev ? ' ' : '') + text);
-            inputRef.current = inputRef.current + (inputRef.current ? ' ' : '') + text;
-            textareaRef.current?.focus();
+            const newInput = (inputRef.current ? inputRef.current + ' ' : '') + text;
+            setInput(newInput);
+            inputRef.current = newInput;
             // Auto-send after transcription
             setTimeout(() => handleSend(), 300);
           }
