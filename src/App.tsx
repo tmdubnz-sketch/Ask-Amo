@@ -556,21 +556,17 @@ export default function App() {
   useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('gemini', geminiApiKey); }, [areApiKeysHydrated, geminiApiKey]);
 
   useEffect(() => {
-    const hasBootstrapped = localStorage.getItem('amo_brain_bootstrapped_v3');
-    if (!hasBootstrapped) {
-      void (async () => {
-        try {
-          await knowledgeStoreService.init();
-          await knowledgeBootstrapService.bootstrapAmoBrain();
-          localStorage.setItem('amo_brain_bootstrapped_v3', 'true');
-          await syncUploadedDocsFromStorage();
-          await refreshBrainState();
-          console.info('[AskAmo] Brain bootstrap complete.');
-        } catch (e) {
-          console.error('[AskAmo] Brain bootstrap failed:', e);
-        }
-      })();
-    }
+    void (async () => {
+      try {
+        await knowledgeStoreService.init();
+        await knowledgeBootstrapService.bootstrapAmoBrain();
+        await syncUploadedDocsFromStorage();
+        await refreshBrainState();
+        console.info('[AskAmo] Brain bootstrap complete.');
+      } catch (e) {
+        console.error('[AskAmo] Brain bootstrap failed:', e);
+      }
+    })();
   }, []);
 
   const refreshNativeOfflineStatus = async () => {
