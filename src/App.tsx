@@ -1103,7 +1103,7 @@ export default function App() {
             const result = await nativeReplyCoordinator.generateAndCommit({
              chatId: currentChatId,
              userInput: userPrompt,
-             knowledgeContext: bundle.knowledgeContext,
+             knowledgeContext: bundle.combinedContext,
              webContext: webSearchContext,
              ensureReady: ensureNativeOfflineReady,
              generate: p => nativeOfflineLlmService.generate({ prompt: p }),

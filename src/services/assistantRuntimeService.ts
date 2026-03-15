@@ -99,8 +99,8 @@ export const assistantRuntimeService = {
     const memoryContext = await amoBrainService.buildFastContext(options.scope, options.userInput);
     const compactTurns = options.messages
       .filter((message) => message.role === 'user' || message.role === 'assistant')
-      .slice(-2)
-      .map((message) => `${message.role === 'user' ? 'User' : 'Amo'}: ${trimText(message.content.replace(/\s+/g, ' '), 64)}`)
+      .slice(-6)
+      .map((message) => `${message.role === 'user' ? 'User' : 'Amo'}: ${trimText(message.content.replace(/\s+/g, ' '), 120)}`)
       .join('\n');
 
     const truncatedWebContext = options.webContext ? options.webContext.slice(0, 800).trim() : '';
@@ -159,7 +159,7 @@ export const assistantRuntimeService = {
     userInput: string;
     contextBundle: AssistantContextBundle;
   }): string {
-    const compactUser = trimText(options.userInput.replace(/\s+/g, ' ').trim(), 28);
+    const compactUser = trimText(options.userInput.replace(/\s+/g, ' ').trim(), 400);
     const compactTurns = trimText(options.contextBundle.recentTurns.replace(/\s+/g, ' ').trim(), 80);
     const promptParts = [
       'You are Amo.',
