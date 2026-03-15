@@ -1600,16 +1600,6 @@ export default function App() {
            </div>
         
          <div className="flex items-center gap-2">
-            {isLoading && (
-              <button
-                onClick={handleCancelThinking}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-bold transition-all hover:bg-red-500/25 animate-pulse"
-                title="Cancel Amo response"
-              >
-                <X className="w-3.5 h-3.5" />
-                Stop
-              </button>
-            )}
             <div className="hidden md:flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-white/50">
               <Zap className="w-3.5 h-3.5 text-[#ff4e00]/70" aria-hidden="true" />
               <span className="micro-label !text-inherit">{isVoiceMode ? 'Voice Active' : 'Text First'}</span>
