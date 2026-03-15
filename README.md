@@ -82,9 +82,12 @@ Place GGUF files in `/models/` or configure path in app settings.
 
 ## Documentation
 
-- [ROADMAP.md](ROADMAP.md) – Planned features & priorities
-- [AGENTS.md](AGENTS.md) – Agent/personality system for coding tools
-- [CONTRIBUTING.md](CONTRIBUTING.md) – How to contribute (coming soon)
+Full docs in [/docs/](docs/)
+- [Overview & Index](docs/index.md)
+- [ROADMAP](docs/ROADMAP.md) – Planned features & priorities
+- [DEVLOG](docs/DEVLOG.md) – Development journal
+- [DEVELOPER_GUIDE](docs/DEVELOPER_GUIDE.md) – Architecture deep-dive
+- [AGENTS](docs/AGENTS.md) – Personality seed packs
 
 ## Contributing
 
