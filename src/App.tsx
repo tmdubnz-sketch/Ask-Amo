@@ -54,7 +54,6 @@ import { webSearchService, shouldUseWebSearch } from './services/webSearchServic
 import { assistantRuntimeService } from './services/assistantRuntimeService';
 import { knowledgeBootstrapService } from './services/knowledgeBootstrapService';
 import { normalizeTranscriptText, routeUserIntent } from './services/intentRouterService';
-import { parseUserIntent, buildKnowledgeQuery, shouldForceRetrieval, shouldTriggerWebSearch } from './services/intentPatternService';
 import { nativeChatSessionService } from './services/nativeChatSessionService';
 import { nativeReplyCoordinator, buildDeterministicReply } from './services/nativeReplyCoordinator';
 import {
@@ -70,6 +69,7 @@ import { useMessages } from './hooks/useMessages';
 import { audioCaptureService } from './services/audioCaptureService';
 import { MessageList } from './components/MessageList';
 import { AmoAvatar } from './components/AmoAvatar';
+import { Sidebar, type SidebarTab } from './components/Sidebar';
 import { AMO_STARTER_PACKS } from './data/amoStarterPacks';
 import { AVAILABLE_MODELS, type ModelConfig, type ChatSession } from './types';
 import { apiKeyStorage } from './services/apiKeyStorage';
@@ -78,7 +78,6 @@ import type { ConversationMemoryRow, MemorySummaryRow, SeedPackRow, ToolRegistry
 import { cn } from './lib/utils';
 
 type SettingsSection = 'general' | 'models' | 'knowledge' | 'workspace' | 'cognition';
-type SidebarTab = 'chats' | 'workspace' | 'settings';
 type ImportSourceKind = 'document' | 'skill' | 'dataset';
 
 interface ImportedAsset {
@@ -150,14 +149,14 @@ const PREFERRED_NATIVE_MODEL_PATTERNS = [
 
 const RECOMMENDED_NATIVE_DOWNLOADS = [
   {
-    label: 'Qwen 0.5B Q3_K_M',
-    description: 'Best balance for this phone',
-    url: 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q3_k_m.gguf?download=true',
+    label: 'Phi-3.5 Mini 3.8B Q4_K_M',
+    description: 'Best for Snapdragon 865',
+    url: 'https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf?download=true',
   },
   {
-    label: 'Qwen 0.5B Q4_K_M',
-    description: 'Manual fallback if Q3 feels too weak',
-    url: 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true',
+    label: 'Llama 3.2 3B Q4_K_M',
+    description: 'Meta Llama - alternative',
+    url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf?download=true',
   },
 ] as const;
 
@@ -496,7 +495,7 @@ export default function App() {
   
   const [nativeOfflineStatus, setNativeOfflineStatus] = useState<NativeOfflineStatus | null>(null);
   const [nativeTtsStatus, setNativeTtsStatus] = useState<NativeTtsStatus | null>(null);
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [nativePiperStatus, setNativePiperStatus] = useState<NativePiperVoiceStatus | null>(null);
   const [loadedModelId, setLoadedModelId] = useState<string | null>(null);
   const [downloadStatus, setDownloadStatus] = useState('');
    const [error, setError] = useState<string | null>(null);
@@ -512,7 +511,7 @@ export default function App() {
   const [toolRegistryRows, setToolRegistryRows] = useState<ToolRegistryRow[]>([]);
   const [seedPackRows, setSeedPackRows] = useState<SeedPackRow[]>([]);
 
-const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -634,17 +633,24 @@ const chatContainerRef = useRef<HTMLDivElement>(null);
     }
   };
 
-  const handleImportNativeModel = async () => {
-    const picked = await nativeOfflineLlmService.pickModelFile();
-    if (picked?.valid) {
-      const status = await nativeOfflineLlmService.importModel({
-        sourceUri: picked.sourceUri,
-        displayName: picked.displayName,
-        activate: true
-      });
-      if (status) setNativeOfflineStatus(status.status);
-    }
-  };
+   const handleImportNativeModel = async () => {
+     const picked = await nativeOfflineLlmService.pickModelFile();
+     if (picked?.valid) {
+       const status = await nativeOfflineLlmService.importModel({
+         sourceUri: picked.sourceUri,
+         displayName: picked.displayName,
+         activate: true
+       });
+       if (status) {
+         setNativeOfflineStatus(status.status);
+         const nativeModel = AVAILABLE_MODELS.find(m => m.family === 'native');
+         if (nativeModel) {
+           setSelectedModel(nativeModel);
+           localStorage.setItem('amo_selected_model_id', nativeModel.id);
+         }
+       }
+     }
+   };
 
   const handleDownloadNativeModel = async (sourceUrl = nativeDownloadUrl) => {
     const normalizedUrl = normalizeWebUrl(sourceUrl);
@@ -708,6 +714,62 @@ const chatContainerRef = useRef<HTMLDivElement>(null);
     }
   };
 
+  const handleClearMemory = async () => {
+    try {
+      await amoBrainService.clearMemoryNotes(`chat:${currentChatId}`);
+      await amoBrainService.clearSummaries(`chat:${currentChatId}`);
+      await refreshBrainState();
+      setDownloadStatus('Memory cleared.');
+    } catch (e: any) {
+      setError('Failed to clear memory.');
+    }
+  };
+
+  const handleExportHistory = () => {
+    const data = JSON.stringify(chats, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `amo-history-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleRefreshNews = async () => {
+    if (!navigator.onLine) {
+      setError('No internet connection — cannot refresh news.');
+      return;
+    }
+    try {
+      const { webAssistService } = await import('./services/webAssistService');
+      await webAssistService.fetchNews(['New Zealand news today', 'Aotearoa news', 'world news today', 'technology news today']);
+      setDownloadStatus('News refreshed.');
+    } catch {
+      setError('Failed to refresh news.');
+    }
+  };
+
+  const handleClearCache = async () => {
+    const { webAssistService } = await import('./services/webAssistService');
+    webAssistService.clearSessionCache();
+    setDownloadStatus('Web cache cleared.');
+  };
+
+  const handleSaveCurrentPage = async () => {
+    const { webViewBridgeService } = await import('./services/webViewBridgeService');
+    const msg = await webViewBridgeService.importCurrentPageToKnowledge();
+    setDownloadStatus(msg);
+    await syncUploadedDocsFromStorage();
+  };
+
+  const handleRunQuickCommand = async (cmd: string) => {
+    setActiveView('terminal');
+    setInput(cmd);
+    inputRef.current = cmd;
+    await handleSend();
+  };
+
   const refreshBrainState = async () => {
     try {
       const scope = `chat:${currentChatId}`;
@@ -743,13 +805,6 @@ const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const currentChat = chats.find((c) => c.id === currentChatId) || chats[0];
   const { messages, setMessages, addMessage, updateMessage, addStreamingMessage, finalizeMessage, clearMessages } = useMessages(currentChat?.messages || []);
-
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages]);
 
   const isNativeOfflineAvailable = nativeOfflineLlmService.isAvailable();
   const localRuntimeState = resolveLocalRuntimeState({ nativeOfflineStatus, isNativeOfflineAvailable, loadedModelId });
@@ -925,8 +980,8 @@ const chatContainerRef = useRef<HTMLDivElement>(null);
     }
   };
 
-const resolveWebAssistContext = async (userPrompt: string, forceSearch = false): Promise<string | undefined> => {
-    const shouldSearch = navigator.onLine && isWebSearchEnabled && (forceSearch || shouldUseWebSearch(userPrompt));
+  const resolveWebAssistContext = async (userPrompt: string): Promise<string | undefined> => {
+    const shouldSearch = navigator.onLine && isWebSearchEnabled && shouldUseWebSearch(userPrompt);
     if (!shouldSearch) {
       setIsWebAssistActive(false);
       return undefined;
@@ -935,8 +990,8 @@ const resolveWebAssistContext = async (userPrompt: string, forceSearch = false):
     setIsWebAssistActive(true);
     try {
       const results = await withTimeout(
-        webSearchService.search(userPrompt, 5),
-        12000,
+        webSearchService.search(userPrompt, 3),
+        8000,
         'Web assist timed out.'
       );
 
@@ -944,7 +999,9 @@ const resolveWebAssistContext = async (userPrompt: string, forceSearch = false):
         return undefined;
       }
 
-      setWebViewUrl(`amo://search?q=${encodeURIComponent(userPrompt)}`);
+      if (shouldUseWebSearch(userPrompt)) {
+        setWebViewUrl(`amo://search?q=${encodeURIComponent(userPrompt)}`);
+      }
 
       return webSearchService.formatResults(results);
     } catch (webError) {
@@ -1040,22 +1097,17 @@ const resolveWebAssistContext = async (userPrompt: string, forceSearch = false):
       activeAssistantMessageIdRef.current = assistantId;
      
      // Measure the total response generation time
-try {
-         await measure('Total Response Generation', async () => {
-          const history = messages.map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
-          
-          const parsedIntent = parseUserIntent(userPrompt);
-          const forceWebSearch = shouldTriggerWebSearch(parsedIntent, userPrompt);
-          const knowledgeQuery = shouldForceRetrieval(parsedIntent) ? buildKnowledgeQuery(parsedIntent) : userPrompt;
-          
-          const webSearchContext = await resolveWebAssistContext(userPrompt, forceWebSearch);
+     try {
+        await measure('Total Response Generation', async () => {
+         const history = messages.map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
+          const webSearchContext = await resolveWebAssistContext(userPrompt);
           if (isRequestCanceled(requestId)) {
             return;
           }
 
-          const bundle = selectedModel.family === 'native'
-            ? await assistantRuntimeService.buildNativeContextBundle({ scope: `chat:${currentChatId}`, userInput: knowledgeQuery, messages: history, webContext: webSearchContext })
-            : await assistantRuntimeService.buildContextBundle({ scope: `chat:${currentChatId}`, userInput: knowledgeQuery, messages: history, includeKnowledge: true, webContext: webSearchContext });
+         const bundle = selectedModel.family === 'native'
+           ? await assistantRuntimeService.buildNativeContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, webContext: webSearchContext })
+           : await assistantRuntimeService.buildContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, includeKnowledge: true, webContext: webSearchContext });
 
          const nativeSelected = selectedModel.family === 'native';
          if (nativeSelected && localRuntimeState.capability !== 'ready') {
@@ -1114,7 +1166,7 @@ try {
             const result = await nativeReplyCoordinator.generateAndCommit({
              chatId: currentChatId,
              userInput: userPrompt,
-             knowledgeContext: bundle.combinedContext,
+             knowledgeContext: bundle.knowledgeContext,
              webContext: webSearchContext,
              ensureReady: ensureNativeOfflineReady,
              generate: p => nativeOfflineLlmService.generate({ prompt: p }),
@@ -1280,27 +1332,7 @@ try {
       audioCaptureService.stop();
       setIsListening(false);
     } else {
-      audioCaptureService.onSpeechStart = () => {
-        setIsListening(true);
-      };
-      audioCaptureService.onSpeechStop = async (audioBlob: Blob) => {
-        setIsListening(false);
-        setIsTranscribing(true);
-        try {
-          const text = await groqService.transcribe(audioBlob);
-          if (text.trim()) {
-            const newInput = (inputRef.current ? inputRef.current + ' ' : '') + text;
-            setInput(newInput);
-            inputRef.current = newInput;
-            // Auto-send after transcription
-            setTimeout(() => handleSend(), 300);
-          }
-        } catch (err) {
-          console.error('[Voice] Transcription failed:', err);
-        } finally {
-          setIsTranscribing(false);
-        }
-      };
+      setIsListening(true);
       await audioCaptureService.start();
     }
   };
@@ -1406,56 +1438,68 @@ try {
              <span className="micro-label !text-inherit">{isVoiceMode ? 'Voice Active' : 'Text First'}</span>
            </div>
            <button onClick={clearChat} className="p-2 text-white/40 hover:text-white/80 transition-colors" title="Clear conversation" aria-label="Clear conversation"><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
-           <button onClick={() => setIsSettingsOpen(true)} className={cn("p-2 rounded-full transition-colors", isSettingsOpen ? "bg-[#ff4e00]/20 text-[#ff4e00]" : "text-white/40 hover:text-white/80")} title="Amo Settings" aria-label="Open settings"><Settings className="w-4 h-4" aria-hidden="true" /></button>
+            <button onClick={() => setIsSidebarOpen(true)} className={cn("p-2 rounded-full transition-colors", isSidebarOpen ? "bg-[#ff4e00]/20 text-[#ff4e00]" : "text-white/40 hover:text-white/80")} title="Amo Hub" aria-label="Open sidebar"><Settings className="w-4 h-4" aria-hidden="true" /></button>
          </div>
        </header>
 
-       <AnimatePresence>
+        <AnimatePresence>
           {isSidebarOpen && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-md z-40" aria-hidden="true" />}
-       </AnimatePresence>
+        </AnimatePresence>
 
-       <div className={cn("fixed inset-y-0 left-0 z-50 w-[19rem] glass-panel border-r border-white/10 transform transition-transform duration-300 flex flex-col shadow-2xl", isSidebarOpen ? "translate-x-0" : "-translate-x-full")}>
-         <div className="p-5 space-y-5 border-b border-white/10">
-           <div className="flex justify-between items-center">
-             <h2 className="font-serif italic text-white/80 text-lg">Amo Hub</h2>
-             <button onClick={() => setIsSidebarOpen(false)}><X className="w-4 h-4 text-white/20" /></button>
-           </div>
-           <div className="flex p-1 rounded-2xl bg-white/[0.03] border border-white/5" role="tablist" aria-label="Sidebar navigation">
-             {[ {id:'chats',icon:History,label:'Chats'}, {id:'workspace',icon:FolderOpen,label:'Files'}, {id:'settings',icon:LayoutDashboard,label:'Tools'} ].map(t => (
-               <button key={t.id} onClick={() => setSidebarTab(t.id as any)} className={cn("flex-1 flex flex-col items-center gap-1 py-2 rounded-xl transition-all", sidebarTab === t.id ? "bg-white/[0.06] text-[#ff4e00] shadow-inner" : "text-white/30")} role="tab" aria-selected={sidebarTab === t.id}>
-                 <t.icon className="w-4 h-4" aria-hidden="true" />
-                 <span className="text-[8px] uppercase tracking-tighter">{t.label}</span>
-               </button>
-             ))}
-           </div>
-         </div>
+        <Sidebar
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          chats={chats}
+          currentChatId={currentChatId}
+          onSelectChat={(id) => { setCurrentChatId(id); }}
+          onNewChat={createNewChat}
+          onDeleteChat={deleteChat}
+          uploadedDocs={uploadedDocs}
+          isUploadingDoc={isUploadingDoc}
+          onImportDoc={() => docInputRef.current?.click()}
+          onImportUrl={() => { setIsSettingsOpen(true); setSettingsSection('knowledge'); }}
+          onWorkspaceSetup={handleWorkspaceSetup}
+          areStarterPacksImported={areStarterPacksImported}
+          isImportingStarterPacks={isImportingStarterPacks}
+          brainMemoryRows={brainMemoryRows}
+          brainSummaryRows={brainSummaryRows}
+          seedPackRows={seedPackRows}
+          onRefreshNews={handleRefreshNews}
+          onClearCache={handleClearCache}
+          onSwitchView={setActiveView}
+          onRunCommand={handleRunQuickCommand}
+          onSaveCurrentPage={handleSaveCurrentPage}
+          selectedModelId={selectedModel.id}
+          nativeModelStatus={localRuntimeState.capability}
+          nativeModelName={nativeOfflineStatus?.activeModel?.displayName || 'No model loaded'}
+          hasGroqKey={hasGroqApiKey}
+          hasGeminiKey={hasGeminiApiKey}
+          hasOpenAiKey={hasOpenAiApiKey}
+          hasOpenRouterKey={hasOpenRouterApiKey}
+          groqApiKey={groqApiKey}
+          geminiApiKey={geminiApiKey}
+          openAiApiKey={openAiApiKey}
+          openRouterApiKey={openRouterApiKey}
+          onSetGroqKey={setGroqApiKey}
+          onSetGeminiKey={setGeminiApiKey}
+          onSetOpenAiKey={setOpenAiApiKey}
+          onSetOpenRouterKey={setOpenRouterApiKey}
+          onDownloadModel={handleDownloadAndLoad}
+          onImportModel={handleImportNativeModel}
+          isDownloadingModel={isDownloadingNativeModel}
+          onSendPrompt={(text) => { setInput(text); inputRef.current = text; textareaRef.current?.focus(); }}
+          isVoiceMode={isVoiceMode}
+          onToggleVoiceMode={() => setIsVoiceMode(!isVoiceMode)}
+          isWebSearchEnabled={isWebSearchEnabled}
+          onToggleWebSearch={() => setIsWebSearchEnabled(!isWebSearchEnabled)}
+          isDeepThinkEnabled={isDeepThinkEnabled}
+          onToggleDeepThink={() => setIsDeepThinkEnabled(!isDeepThinkEnabled)}
+          onClearMemory={handleClearMemory}
+          onExportHistory={handleExportHistory}
+          appVersion="1.0.0"
+        />
 
-         <div className="flex-1 overflow-y-auto custom-scrollbar">
-           {sidebarTab === 'chats' && (
-             <div className="p-3 space-y-2">
-               <button onClick={createNewChat} className="w-full py-3 bg-[#ff4e00]/10 border border-[#ff4e00]/20 rounded-2xl text-xs font-medium">+ New Conversation</button>
-               {chats.map(c => (
-                 <div key={c.id} onClick={() => {setCurrentChatId(c.id); setIsSidebarOpen(false);}} className={cn("p-4 rounded-2xl text-[13px] cursor-pointer flex justify-between group transition-all", currentChatId === c.id ? "bg-white/[0.07] text-[#ff4e00]" : "text-white/50 hover:bg-white/5")}>
-                   <span className="truncate">{c.title}</span>
-                   <button onClick={(e) => deleteChat(c.id, e)} className="opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
-                 </div>
-               ))}
-             </div>
-           )}
-           {sidebarTab === 'workspace' && <WorkspaceFileTree />}
-           {sidebarTab === 'settings' && (
-             <div className="p-4 space-y-4">
-               <div className="micro-label !text-white/20 mb-2 px-1">Workspace Tools</div>
-               <button onClick={() => { setIsSettingsOpen(true); setIsSidebarOpen(false); }} className="w-full p-4 rounded-2xl border text-left flex items-center gap-3 transition-all bg-white/[0.02] border-white/5 text-white/40 hover:border-white/10 hover:text-white/80">
-                 <Settings className="w-4 h-4" />
-                 <span className="text-sm font-medium">Open Amo Settings</span>
-               </button>
-             </div>
-           )}
-         </div>
-       </div>
-
-       <main className="flex-1 flex flex-col relative overflow-hidden">
+        <main className="flex-1 flex flex-col relative overflow-hidden">
          <div className="border-b border-white/10 px-4 sm:px-6 py-3">
            <div className="flex items-center gap-2 max-w-4xl mx-auto">
 <button onClick={() => setActiveView('chat')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all", activeView === 'chat' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Chat</button>
@@ -1541,11 +1585,11 @@ try {
                 <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*,video/*,audio/*,.pdf,.txt,.md" className="hidden" />
                 <div className="relative flex-1 flex items-stretch">
                   <textarea ref={textareaRef} value={input} onChange={handleInput} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="Chat with Amo..." className="w-full glass-panel border border-white/5 rounded-[1.75rem] px-6 py-[18px] pr-28 text-[15px] focus:outline-none focus:border-[#ff4e00]/50 resize-none min-h-[60px] h-[60px] shadow-2xl transition-all" rows={1} />
-<div className="absolute right-14 top-1/2 -translate-y-1/2">
-                      <button onClick={toggleListening} disabled={isTranscribing} className={cn("w-10 h-10 rounded-full flex items-center justify-center transition-all", isListening ? "bg-red-500/20 text-red-500" : isTranscribing ? "bg-amber-500/20 text-amber-500" : "text-white/20 hover:text-white/80")}>
-                        {isListening ? <MicOff className="w-5 h-5" /> : isTranscribing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
-                      </button>
-                    </div>
+                   <div className="absolute right-14 top-1/2 -translate-y-1/2">
+                     <button onClick={toggleListening} className={cn("w-10 h-10 rounded-full flex items-center justify-center transition-all", isListening ? "bg-red-500/20 text-red-500" : "text-white/20 hover:text-white/80")}>
+                       {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                     </button>
+                   </div>
                     <button onClick={isLoading ? handleCancelThinking : handleSend} disabled={!isLoading && !input.trim()} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-gradient-to-br from-orange-500 to-[#ff4e00] text-white flex items-center justify-center hover:opacity-90 disabled:opacity-30 transition-all shadow-lg">{isLoading ? <X className="w-5 h-5" /> : <Send className="w-4 h-4 ml-0.5" />}</button>
                  </div>
                </div>

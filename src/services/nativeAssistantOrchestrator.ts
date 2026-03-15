@@ -1,148 +1,184 @@
 import type { NativeOfflineStatus } from './nativeOfflineLlmService';
 import type { NativeSessionMessage } from './nativeChatSessionService';
 
-const MAX_RECENT_TURNS = 3;
-const MAX_TURN_CHARS = 128;
-const MAX_USER_CHARS = 256;
+// ── LIMITS ────────────────────────────────────────────────────────────────────
+// Tuned for Phi-3.5 Mini / 3B+ on Snapdragon 865
+
+const MAX_RECENT_TURNS    = 8;
+const MAX_TURN_CHARS       = 500;
+const MAX_USER_CHARS       = 1200;
+const MAX_KNOWLEDGE_CHARS = 3500;
+const MAX_WEB_CHARS       = 2500;
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
 
 function normalizeText(text: string, maxChars: number): string {
   const normalized = text.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= maxChars) {
-    return normalized;
-  }
-
-  return normalized.slice(0, maxChars).trim();
+  return normalized.length <= maxChars
+    ? normalized
+    : normalized.slice(0, maxChars).trim();
 }
 
 function buildRecentTurns(session: NativeSessionMessage[]): string {
   return session
     .slice(-MAX_RECENT_TURNS)
-    .map((message) => `${message.role === 'user' ? 'User' : 'Amo'}: ${normalizeText(message.content, MAX_TURN_CHARS)}`)
+    .map((m) => `${m.role === 'user' ? 'User' : 'Amo'}: ${normalizeText(m.content, MAX_TURN_CHARS)}`)
     .join('\n');
 }
 
-function buildPrimaryPrompt(userInput: string, session: NativeSessionMessage[], knowledgeContext?: string, webContext?: string): string {
+// ── RESPONSE LENGTH GUIDANCE ──────────────────────────────────────────────────
+// Detect whether the question needs a short answer or a fuller guide
+
+function detectResponseLength(userInput: string): 'short' | 'full' {
+  const normalized = userInput.toLowerCase();
+  const needsFull = [
+    'how', 'guide', 'step', 'explain', 'show me', 'what can', 'can you',
+    'help me', 'how do', 'how to', 'walk me', 'teach', 'tell me about',
+    'what is', 'what are', 'describe', 'list', 'instructions',
+  ];
+  return needsFull.some(p => normalized.includes(p)) ? 'full' : 'short';
+}
+
+// ── PRIMARY PROMPT ─────────────────────────────────────────────────────────────
+
+function buildPrimaryPrompt(
+  userInput: string,
+  session: NativeSessionMessage[],
+  knowledgeContext?: string,
+  webContext?: string,
+): string {
   const recentTurns = buildRecentTurns(session);
-  const parts = [
-    'You are Amo, a grounded male New Zealand Maori assistant from Aotearoa.',
-    'Your brain operates on a three-pillar architecture:',
-    '1. Universal Source of Data: Your Atlas, History, and learned web facts.',
-    '2. Single Source of Truth: Your core rules, identity, and respect for Te Reo.',
-    '3. Multiple Sources of Wisdom: Your logic, understanding loops, and practical reasoning.',
-    'Understand user intent even if they use slang, shorthand, or have typos.',
-    'Prefer local context and stored knowledge first for the fastest useful answer.',
-    'If a word is unfamiliar or the sentence is strange, say that clearly and ask the user to repeat or confirm.',
-    'If the wording sounds close to a known word, ask "did you mean ...?" and offer the best likely interpretation.',
-    'For multi-step jobs, enter task mode: think in short steps, use terminal/web tools when needed, and verify the result.',
-    'Always provide a helpful answer using your pillars to complete sentences.',
-    'Reply in one or two short natural sentences. Stay direct and grounded.',
-    'CRITICAL: If search context is available, you MUST include the full clickable direct URL links (e.g., https://example.com) at the end of your response.',
-    'Do not mention being an AI language model.',
+  const responseLength = detectResponseLength(userInput);
+  const compactUser = normalizeText(userInput, MAX_USER_CHARS);
+
+  const parts: string[] = [
+    // Identity — compact, no wasted tokens on architecture meta-description
+    'You are Amo, a grounded male AI assistant from Aotearoa New Zealand.',
+    'You are honest, direct, and practical. You never make things up.',
+    'If something is unclear, say so and ask one short clarifying question.',
+    `Current date and time (NZ): ${new Intl.DateTimeFormat('en-NZ', {
+      timeZone: 'Pacific/Auckland',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date())}`,
+    responseLength === 'full'
+      ? 'Give a complete, helpful answer. Use as many sentences as genuinely needed — do not cut off important information.'
+      : 'Be concise. Answer directly in plain language.',
   ];
 
-  if (knowledgeContext) {
-    parts.push(`Local Superbrain Library Context:\n${knowledgeContext}`);
-  }
-
-  if (recentTurns) {
-    parts.push(`Recent chat:\n${recentTurns}`);
-  }
-
+  // Web context FIRST — before knowledge, before history
+  // Small models attend strongly to early context
   if (webContext) {
-    parts.push(`Use this web assist context to answer concisely and provide URL links:\n${webContext}`);
+    const compactWeb = normalizeText(webContext, MAX_WEB_CHARS);
+    parts.push(
+      `[Live web information — use this to answer accurately. Include the source URL in your reply.]\n${compactWeb}`
+    );
   }
 
-  parts.push(`User: ${normalizeText(userInput, MAX_USER_CHARS)}`);
+  // Knowledge context SECOND
+  if (knowledgeContext) {
+    const compactKnowledge = normalizeText(knowledgeContext, MAX_KNOWLEDGE_CHARS);
+    parts.push(
+      `[Knowledge base — use this information to answer the question]\n${compactKnowledge}`
+    );
+  }
+
+  // Conversation history THIRD
+  if (recentTurns) {
+    parts.push(`[Recent conversation]\n${recentTurns}`);
+  }
+
+  // User question LAST — just before generation
+  parts.push(`User: ${compactUser}`);
   parts.push('Amo:');
-  return parts.join('\n');
+
+  return parts.join('\n\n');
 }
+
+// ── FALLBACK PROMPT ────────────────────────────────────────────────────────────
+// Used only if primary prompt produces a bad response
+// Simpler structure, still preserves web context and full user input
 
 function buildFallbackPrompt(userInput: string, webContext?: string): string {
+  const compactUser = normalizeText(userInput, MAX_USER_CHARS);
+
   const parts = [
-    'You are Amo, a male assistant from New Zealand Aotearoa.',
-    'Reply in one short natural sentence.',
-    'Prefer local knowledge first, clarify unclear wording, and ask "did you mean ...?" if needed.',
-    'Do not mention being an AI model.',
+    'You are Amo, a helpful AI assistant from New Zealand.',
+    'Answer the question directly and honestly.',
+    'If you do not know, say so plainly.',
   ];
 
   if (webContext) {
-    parts.push(`Answer concisely using this context and include the link:\n${webContext}`);
+    const compactWeb = normalizeText(webContext, 600);
+    parts.push(`[Web information — use this and include the URL]\n${compactWeb}`);
   }
 
-  parts.push(`User: ${normalizeText(userInput, 40)}`);
+  parts.push(`User: ${compactUser}`);
   parts.push('Amo:');
-  return parts.join('\n');
+
+  return parts.join('\n\n');
 }
+
+// ── RESPONSE SANITIZER ─────────────────────────────────────────────────────────
 
 function sanitizeResponse(text: string): string {
-  // If the text contains a URL, we don't want to collapse ALL whitespace as it might break formatting
-  const hasUrl = text.includes('http://') || text.includes('https://');
-  
+  const hasUrl = /https?:\/\//.test(text);
+
   let cleaned = text
     .replace(/^(amo|assistant)\s*:\s*/i, '')
-    .replace(/^["'`]+|["'`]+$/g, '');
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .trim();
 
-  if (hasUrl) {
-    // Just trim and remove leading/trailing quotes
-    return cleaned.trim();
-  }
-
-  return cleaned.replace(/\s+/g, ' ').trim();
+  // Preserve URL formatting, otherwise collapse whitespace
+  return hasUrl ? cleaned : cleaned.replace(/\s+/g, ' ').trim();
 }
 
+// ── RESPONSE VALIDATOR ─────────────────────────────────────────────────────────
+
 function isBadResponse(text: string): boolean {
+  if (!text || text.length < 3) return true;
+
   const normalized = text.toLowerCase();
-  if (!normalized) {
-    return true;
-  }
 
-  if (normalized.length < 3) {
-    return true;
-  }
+  const badPhrases = [
+    'ai language model',
+    'as an ai',
+    'we are a group',
+    'smarts, we are a group',
+    'amo:',
+    'user:',                    // model continued the conversation itself
+    'i cannot provide',          // overly refusal-heavy non-answer
+    '...',                       // empty thinking output
+  ];
 
-  if (
-    normalized.includes('ai language model')
-    || normalized.includes('as an ai')
-    || normalized.includes('we are a group')
-    || normalized.includes('smarts, we are a group')
-    || normalized === 'amo:'
-  ) {
-    return true;
+  if (badPhrases.some(p => normalized === p || normalized.startsWith(p + ' '))) return true;
+
+  // Repetition — model looping on itself
+  const words = normalized.split(/\s+/);
+  if (words.length >= 6) {
+    const half = Math.floor(words.length / 2);
+    const firstHalf = words.slice(0, half).join(' ');
+    const secondHalf = words.slice(half).join(' ');
+    if (firstHalf === secondHalf) return true;
   }
 
   return false;
 }
 
-function buildDeterministicReply(userInput: string): string | null {
-  const normalized = userInput.replace(/\s+/g, ' ').trim().toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-
-   if (/^(hi|hey|hello|hey bro|kia ora|kiaora|yo|sup|what'?s up)[!.?]*$/i.test(normalized)) {
-     return 'Kia ora. How can I help you?';
-   }
-
-  if (/^(who are you|what are you|introduce yourself|tell me about yourself)[?.!]*$/i.test(normalized)) {
-    return "I'm Amo. I can help with chat, imported knowledge, and offline tools on this device.";
-  }
-
-  if (/^(thanks|thank you|cheers)[!.?]*$/i.test(normalized)) {
-    return "You're welcome.";
-  }
-
-  if (/^(help|help me|can you help|can u help|do you help|what can you do|what can you do offline)[?.!]*$/i.test(normalized)) {
-    return 'I can chat, speak, show offline status, show workspace status, and work with imported knowledge on this device.';
-  }
-
-  return null;
-}
+// ── RESULT TYPE ───────────────────────────────────────────────────────────────
 
 export interface NativeReplyResult {
   text: string;
   status: NativeOfflineStatus | null;
-  promptStrategy: 'session' | 'fallback';
+  promptStrategy: 'primary' | 'fallback';
 }
+
+// ── ORCHESTRATOR ───────────────────────────────────────────────────────────────
 
 export const nativeAssistantOrchestrator = {
   async generateReply(options: {
@@ -150,49 +186,61 @@ export const nativeAssistantOrchestrator = {
     session: NativeSessionMessage[];
     knowledgeContext?: string;
     webContext?: string;
-    runPrompt: (prompt: string, timeoutMessage: string) => Promise<{ text: string; status: NativeOfflineStatus | null }>;
+    runPrompt: (
+      prompt: string,
+      timeoutMessage: string,
+    ) => Promise<{ text: string; status: NativeOfflineStatus | null }>;
   }): Promise<NativeReplyResult> {
-    const deterministicReply = buildDeterministicReply(options.userInput);
-    if (deterministicReply) {
-      return {
-        text: deterministicReply,
-        status: null,
-        promptStrategy: 'fallback',
-      };
-    }
 
-    // Try primary prompt first
+    // NOTE: No deterministic interceptor here.
+    // App.tsx and nativeReplyCoordinator handle greetings/acks before this runs.
+    // Anything reaching this function should go through the full knowledge pipeline.
+
+    // ── Primary attempt ──────────────────────────────────────────────────────
     {
-      const prompt = buildPrimaryPrompt(options.userInput, options.session, options.knowledgeContext, options.webContext);
-      const generated = await options.runPrompt(prompt, 'Native offline model took too long to respond. Reload the model or switch to a cloud model.');
-      console.info(`[AskAmo] Native model output (session):`, generated.text);
+      const prompt = buildPrimaryPrompt(
+        options.userInput,
+        options.session,
+        options.knowledgeContext,
+        options.webContext,
+      );
+
+      console.info('[AskAmo] Primary prompt length:', prompt.length);
+
+      const generated = await options.runPrompt(
+        prompt,
+        'Native model timed out on primary prompt. Try reloading the model or switching to a cloud model.',
+      );
+
+      console.info('[AskAmo] Native output (primary):', generated.text);
       const sanitized = sanitizeResponse(generated.text);
 
       if (!isBadResponse(sanitized)) {
-        return {
-          text: sanitized,
-          status: generated.status,
-          promptStrategy: 'session',
-        };
+        return { text: sanitized, status: generated.status, promptStrategy: 'primary' };
       }
+
+      console.warn('[AskAmo] Primary response failed validation, trying fallback.');
     }
 
-    // If primary prompt didn't work, try fallback prompt
+    // ── Fallback attempt ─────────────────────────────────────────────────────
     {
       const prompt = buildFallbackPrompt(options.userInput, options.webContext);
-      const generated = await options.runPrompt(prompt, 'Native offline fallback prompt took too long to respond. Reload the model or switch to a cloud model.');
-      console.info(`[AskAmo] Native model output (fallback):`, generated.text);
+
+      console.info('[AskAmo] Fallback prompt length:', prompt.length);
+
+      const generated = await options.runPrompt(
+        prompt,
+        'Native model timed out on fallback prompt. Reload the model or switch to a cloud model.',
+      );
+
+      console.info('[AskAmo] Native output (fallback):', generated.text);
       const sanitized = sanitizeResponse(generated.text);
 
       if (!isBadResponse(sanitized)) {
-        return {
-          text: sanitized,
-          status: generated.status,
-          promptStrategy: 'fallback',
-        };
+        return { text: sanitized, status: generated.status, promptStrategy: 'fallback' };
       }
     }
 
-    throw new Error('Native offline runtime returned an unusable response.');
+    throw new Error('Native offline runtime returned an unusable response after both attempts.');
   },
 };

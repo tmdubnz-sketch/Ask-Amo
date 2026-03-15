@@ -101,6 +101,14 @@ export class GroqService {
     formData.append('file', audioBlob, 'audio.wav');
     formData.append('model', 'whisper-large-v3-turbo');
     formData.append('language', 'en');
+    formData.append('prompt',
+      'New Zealand English. Maori words: kia ora, whanau, haere mai, aroha, ' +
+      'mana, tapu, noa, iwi, hapu, marae, tangi, hui, kai, tino rangatiratanga, ' +
+      'Aotearoa, Waikato, Tainui, whakapapa, karakia, whare. ' +
+      'Common commands: go to, switch to, open terminal, open webview, open editor, ' +
+      'search for, look up, clear chat, new chat, open settings, open knowledge. ' +
+      'Names: Amo, Te Amo Wilson.'
+    );
 
     const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
       method: 'POST',

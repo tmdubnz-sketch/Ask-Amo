@@ -92,6 +92,31 @@ export const amoBrainService = {
     await knowledgeStoreService.clearMemorySummariesScope(scope);
   },
 
+  async rememberFact(scope: string, fact: string, value: string): Promise<void> {
+    const id = `fact:${scope}:${fact.toLowerCase().replace(/\s+/g, '-')}`;
+    await knowledgeStoreService.upsertConversationMemory({
+      id,
+      scope,
+      memoryType: 'fact',
+      title: fact,
+      content: value,
+      tags: ['user-fact', 'permanent', 'ask-once'],
+      weight: 10,
+    });
+  },
+
+  async alreadyKnows(scope: string, query: string): Promise<string | null> {
+    const memories = await knowledgeStoreService.listConversationMemory(scope);
+    const normalized = query.toLowerCase();
+    const match = memories.find(m => {
+      const haystack = `${m.title} ${m.content} ${m.tags_json}`.toLowerCase();
+      return m.weight >= 8 && haystack.split(/\s+/).some(
+        word => word.length > 3 && normalized.includes(word)
+      );
+    });
+    return match?.content ?? null;
+  },
+
   async buildFastContext(scope: string, query: string): Promise<string> {
     const appScope = 'app:ask-amo';
     const [scopeMemories, appMemories, scopeSummaries, appSummaries, packs] = await Promise.all([
@@ -126,6 +151,14 @@ export const amoBrainService = {
     const activePacks = packs.slice(0, 3);
 
     const lines: string[] = [];
+
+    const permanentFacts = memories.filter(m => m.weight >= 8);
+    if (permanentFacts.length > 0) {
+      lines.push('Known facts about this user:');
+      for (const fact of permanentFacts.slice(0, 5)) {
+        lines.push(`- ${fact.title}: ${trimText(fact.content, 100)}`);
+      }
+    }
 
     if (topMemories.length > 0) {
       lines.push('Remembered context:');

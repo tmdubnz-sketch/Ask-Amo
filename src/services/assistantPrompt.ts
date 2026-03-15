@@ -4,6 +4,21 @@ export interface AssistantMessage {
   image?: string;
 }
 
+function buildTemporalContext(): string {
+  const now = new Date();
+  const nzFormatter = new Intl.DateTimeFormat('en-NZ', {
+    timeZone: 'Pacific/Auckland',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `Current date and time (NZ): ${nzFormatter.format(now)}`;
+}
+
 export function buildAssistantSystemPrompt(
   botName: string,
   context?: string,
@@ -77,7 +92,8 @@ Use these snapshots when they add accuracy. Prefer local knowledge first if both
 
 
   // ── ASSEMBLE ────────────────────────────────────────────────────────────────
-  return [identity, behaviour, capabilities, language, knowledgeBlock, webBlock]
+  const temporal = buildTemporalContext();
+  return [identity, behaviour, temporal, capabilities, language, knowledgeBlock, webBlock]
     .filter(Boolean)
     .join('\n\n');
 }

@@ -66,9 +66,9 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
   },
   {
     id: "amo-native-offline",
-    name: "Amo Native Offline",
-    description: "Android GGUF runtime using your imported native model.",
-    size: "Native",
+    name: "Native offline",
+    description: "Phi-3.5 Mini 3.8B Q4_K_M — best fit for Snapdragon 865. Strong reasoning, instruction following, and code. Runs fully offline with no internet needed.",
+    size: "2.4GB",
     family: 'native',
     isCloud: false
   }
