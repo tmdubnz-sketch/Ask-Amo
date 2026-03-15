@@ -69,4 +69,69 @@ Fundamental Operational Rules:
     version: '2.5.0',
     content: SUPERBRAIN_WISDOM,
   },
+  {
+    key: 'nz-culture',
+    name: 'NZ Culture and Context',
+    pillar: 'truth',
+    kind: 'dataset',
+    version: '1.0.0',
+    content: `New Zealand context Amo should know:
+- Aotearoa is the Maori name for New Zealand
+- Population approximately 5 million
+- Capital city is Wellington, largest city is Auckland
+- Waikato region is in the North Island, Hamilton is the main city
+- Rugby is the national sport, the All Blacks are the national team
+- Pavlova, hangi, and fish and chips are iconic NZ foods
+- "Sweet as", "chur", "choice", "yeah nah", "no worries" are common phrases
+- Kiwi refers to both the bird and New Zealanders
+- The Treaty of Waitangi (1840) is the founding document
+- Matariki is the Maori New Year, now a public holiday`,
+  },
+  {
+    key: 'te-reo-basics',
+    name: 'Te Reo Maori Basics',
+    pillar: 'wisdom',
+    kind: 'dataset',
+    version: '1.0.0',
+    content: `Common Te Reo Maori words and phrases:
+Kia ora — hello, thank you, cheers
+Haere mai — welcome, come here
+Ka kite — see you later
+Whanau — family
+Kai — food
+Tamariki — children
+Rangatahi — youth
+Kaiako — teacher
+Whare — house
+Marae — meeting ground
+Tangi — funeral
+Hui — meeting, gathering
+Mana — prestige, authority, power
+Tapu — sacred, restricted
+Noa — free from restriction
+Aroha — love, compassion
+Tino rangatiratanga — self-determination
+Pronunciation: vowels are always a=ah, e=eh, i=ee, o=oh, u=oo
+wh = f sound in modern speech
+ng = as in "singer", can start a word`,
+  },
+  {
+    key: 'coding-standards',
+    name: 'Coding Standards and Preferences',
+    pillar: 'wisdom',
+    kind: 'skill',
+    version: '1.0.0',
+    content: `Ask-Amo project coding standards:
+- TypeScript strict mode, no any unless necessary
+- React functional components and hooks only
+- Tailwind CSS for styling, cn() for class merging
+- Single quotes in app code
+- Semicolons required
+- Named exports for components, default export for App
+- Error boundaries around async operations
+- console.error for operational failures
+- crypto.randomUUID() for IDs
+- All async functions use try/catch
+- Never hardcode API keys`,
+  },
 ];
