@@ -1,0 +1,688 @@
+[
+  {
+    "language": "English",
+    "text": "Book a flight to Tokyo tomorrow",
+    "normalized_text": "Book a flight to Tokyo tomorrow.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "tomorrow"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Tokyo this evening",
+    "normalized_text": "Book a flight to Tokyo this evening.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "this evening"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Tokyo next Friday",
+    "normalized_text": "Book a flight to Tokyo next Friday.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "next Friday"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Tokyo in the morning",
+    "normalized_text": "Book a flight to Tokyo in the morning.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "in the morning"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Tokyo two weeks from now",
+    "normalized_text": "Book a flight to Tokyo two weeks from now.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "two weeks from now"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Auckland tomorrow",
+    "normalized_text": "Book a flight to Auckland tomorrow.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Auckland",
+      "date": "tomorrow"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Auckland this evening",
+    "normalized_text": "Book a flight to Auckland this evening.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Auckland",
+      "date": "this evening"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Auckland next Friday",
+    "normalized_text": "Book a flight to Auckland next Friday.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Auckland",
+      "date": "next Friday"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Auckland in the morning",
+    "normalized_text": "Book a flight to Auckland in the morning.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Auckland",
+      "date": "in the morning"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Auckland two weeks from now",
+    "normalized_text": "Book a flight to Auckland two weeks from now.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Auckland",
+      "date": "two weeks from now"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Madrid tomorrow",
+    "normalized_text": "Book a flight to Madrid tomorrow.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Madrid",
+      "date": "tomorrow"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Madrid this evening",
+    "normalized_text": "Book a flight to Madrid this evening.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Madrid",
+      "date": "this evening"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Madrid next Friday",
+    "normalized_text": "Book a flight to Madrid next Friday.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Madrid",
+      "date": "next Friday"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Madrid in the morning",
+    "normalized_text": "Book a flight to Madrid in the morning.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Madrid",
+      "date": "in the morning"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Madrid two weeks from now",
+    "normalized_text": "Book a flight to Madrid two weeks from now.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Madrid",
+      "date": "two weeks from now"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Dubai tomorrow",
+    "normalized_text": "Book a flight to Dubai tomorrow.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Dubai",
+      "date": "tomorrow"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Dubai this evening",
+    "normalized_text": "Book a flight to Dubai this evening.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Dubai",
+      "date": "this evening"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Dubai next Friday",
+    "normalized_text": "Book a flight to Dubai next Friday.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Dubai",
+      "date": "next Friday"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Dubai in the morning",
+    "normalized_text": "Book a flight to Dubai in the morning.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Dubai",
+      "date": "in the morning"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Book a flight to Dubai two weeks from now",
+    "normalized_text": "Book a flight to Dubai two weeks from now.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Dubai",
+      "date": "two weeks from now"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "Order pizza to home pls",
+    "normalized_text": "Order pizza to home please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "pizza",
+      "location": "home"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order pizza to office pls",
+    "normalized_text": "Order pizza to office please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "pizza",
+      "location": "office"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order pizza to airport pls",
+    "normalized_text": "Order pizza to airport please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "pizza",
+      "location": "airport"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order pizza to downtown pls",
+    "normalized_text": "Order pizza to downtown please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "pizza",
+      "location": "downtown"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order sushi to home pls",
+    "normalized_text": "Order sushi to home please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "sushi",
+      "location": "home"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order sushi to office pls",
+    "normalized_text": "Order sushi to office please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "sushi",
+      "location": "office"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order sushi to airport pls",
+    "normalized_text": "Order sushi to airport please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "sushi",
+      "location": "airport"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order sushi to downtown pls",
+    "normalized_text": "Order sushi to downtown please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "sushi",
+      "location": "downtown"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order coffee to home pls",
+    "normalized_text": "Order coffee to home please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "coffee",
+      "location": "home"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order coffee to office pls",
+    "normalized_text": "Order coffee to office please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "coffee",
+      "location": "office"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order coffee to airport pls",
+    "normalized_text": "Order coffee to airport please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "coffee",
+      "location": "airport"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order coffee to downtown pls",
+    "normalized_text": "Order coffee to downtown please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "coffee",
+      "location": "downtown"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order books to home pls",
+    "normalized_text": "Order books to home please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "books",
+      "location": "home"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order books to office pls",
+    "normalized_text": "Order books to office please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "books",
+      "location": "office"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order books to airport pls",
+    "normalized_text": "Order books to airport please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "books",
+      "location": "airport"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "Order books to downtown pls",
+    "normalized_text": "Order books to downtown please.",
+    "intent": "order_food",
+    "entities": {
+      "item": "books",
+      "location": "downtown"
+    },
+    "source_style": "slang"
+  },
+  {
+    "language": "English",
+    "text": "hw u been? cum ova 2 my place tmrw",
+    "normalized_text": "How have you been? Come over to my place tomorrow.",
+    "intent": "social_greeting",
+    "entities": {
+      "date": "tomorrow",
+      "location": "my place"
+    },
+    "source_style": "text-style"
+  },
+  {
+    "language": "English",
+    "text": "Need a taxi from here to the airport now",
+    "normalized_text": "I need a taxi from here to the airport now.",
+    "intent": "book_ride",
+    "entities": {
+      "pickup": "here",
+      "destination": "airport",
+      "time": "now"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "English",
+    "text": "gonna run 5k later, remind me",
+    "normalized_text": "I am going to run five kilometers later; remind me.",
+    "intent": "set_reminder",
+    "entities": {
+      "distance": "5k",
+      "time": "later"
+    },
+    "source_style": "text-style"
+  },
+  {
+    "language": "Japanese",
+    "text": "明日東京へのフライトを予約したい",
+    "normalized_text": "I want to book a flight to Tokyo 明日.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "tomorrow"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Japanese",
+    "text": "今晩東京へのフライトを予約したい",
+    "normalized_text": "I want to book a flight to Tokyo 今晩.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "tonight"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Japanese",
+    "text": "週末東京へのフライトを予約したい",
+    "normalized_text": "I want to book a flight to Tokyo 週末.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "this weekend"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Japanese",
+    "text": "天気どう？",
+    "normalized_text": "How is the weather?",
+    "intent": "check_weather",
+    "entities": {},
+    "source_style": "text-style"
+  },
+  {
+    "language": "Japanese",
+    "text": "今晩、ピザとビールを頼みたい",
+    "normalized_text": "I want to order pizza and beer tonight.",
+    "intent": "order_food",
+    "entities": {
+      "item": "pizza and beer",
+      "time": "tonight"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Japanese",
+    "text": "明日朝6時に起こして",
+    "normalized_text": "Wake me up at six a.m. tomorrow.",
+    "intent": "set_alarm",
+    "entities": {
+      "time": "6am",
+      "date": "tomorrow"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Japanese",
+    "text": "宇宙について教えて",
+    "normalized_text": "Tell me about space.",
+    "intent": "ask_definition",
+    "entities": {
+      "topic": "space"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Māori",
+    "text": "Kei te pēhea koe?",
+    "normalized_text": "How are you?",
+    "intent": "social_greeting",
+    "entities": {},
+    "source_style": "standard"
+  },
+  {
+    "language": "Māori",
+    "text": "Homai he mōkī pīza ki taku whare",
+    "normalized_text": "Deliver a pizza to my home.",
+    "intent": "order_food",
+    "entities": {
+      "item": "pizza",
+      "location": "my home"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Māori",
+    "text": "Me whakarite he rererangi ki Tokyo āpōpō",
+    "normalized_text": "Book a flight to Tokyo tomorrow.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "tomorrow"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Māori",
+    "text": "Anei te āhuarangi mō Tāmaki Makaurau",
+    "normalized_text": "Here is the weather for Auckland.",
+    "intent": "check_weather",
+    "entities": {
+      "location": "Auckland"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Māori",
+    "text": "Tukua mai he whakamārama mō te hangarau",
+    "normalized_text": "Give me an explanation about technology.",
+    "intent": "ask_definition",
+    "entities": {
+      "topic": "technology"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Arabic",
+    "text": "أريد حجز رحلة إلى طوكيو غدًا",
+    "normalized_text": "I want to book a flight to Tokyo غدًا.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "غدًا"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Arabic",
+    "text": "أريد حجز رحلة إلى طوكيو اليوم",
+    "normalized_text": "I want to book a flight to Tokyo اليوم.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "اليوم"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Arabic",
+    "text": "أريد حجز رحلة إلى طوكيو مساءً",
+    "normalized_text": "I want to book a flight to Tokyo مساءً.",
+    "intent": "book_flight",
+    "entities": {
+      "destination": "Tokyo",
+      "date": "مساءً"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Arabic",
+    "text": "كيف الطقس في عمان؟",
+    "normalized_text": "How is the weather in Amman?",
+    "intent": "check_weather",
+    "entities": {
+      "location": "Amman"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Arabic",
+    "text": "اطلبلي بيتزا مع جبنة زيادة",
+    "normalized_text": "Order me pizza with extra cheese.",
+    "intent": "order_food",
+    "entities": {
+      "item": "pizza",
+      "modifier": "extra cheese"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Arabic",
+    "text": "اسمح لي بتذكير للاتصال بأمي",
+    "normalized_text": "Remind me to call my mother.",
+    "intent": "set_reminder",
+    "entities": {
+      "person": "mother"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Arabic",
+    "text": "شو رأيك؟",
+    "normalized_text": "What do you think?",
+    "intent": "ask_opinion",
+    "entities": {},
+    "source_style": "text-style"
+  },
+  {
+    "language": "Spanish",
+    "text": "Quiero ordenar paella para cenar",
+    "normalized_text": "I want to order paella for dinner.",
+    "intent": "order_food",
+    "entities": {
+      "item": "paella"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Spanish",
+    "text": "Quiero ordenar tacos para cenar",
+    "normalized_text": "I want to order tacos for dinner.",
+    "intent": "order_food",
+    "entities": {
+      "item": "tacos"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Spanish",
+    "text": "Quiero ordenar café para cenar",
+    "normalized_text": "I want to order café for dinner.",
+    "intent": "order_food",
+    "entities": {
+      "item": "café"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Spanish",
+    "text": "¿Puedes recordarme llamar a mamá a las seis?",
+    "normalized_text": "Can you remind me to call mom at six?",
+    "intent": "set_reminder",
+    "entities": {
+      "person": "mom",
+      "time": "six"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Spanish",
+    "text": "¿Dónde está la mejor paella?",
+    "normalized_text": "Where is the best paella?",
+    "intent": "ask_recommendation",
+    "entities": {
+      "item": "paella"
+    },
+    "source_style": "standard"
+  },
+  {
+    "language": "Spanish",
+    "text": "¿Cómo está el clima en Sevilla?",
+    "normalized_text": "How is the weather in Seville?",
+    "intent": "check_weather",
+    "entities": {
+      "location": "Seville"
+    },
+    "source_style": "standard"
+  }
+]

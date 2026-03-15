@@ -1,0 +1,203 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", "Georgia", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --color-bg: #050505;
+  --color-accent: #ff4e00;
+  --glass-surface: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+}
+
+@layer base {
+  body {
+    @apply antialiased text-white font-sans;
+    background-color: var(--color-bg);
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  *, *::before, *::after {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Atmospheric background—layered gradients */
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: 
+    radial-gradient(circle at 50% 0%, #2a110a 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(255, 78, 0, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 20% 50%, rgba(20, 20, 25, 0.8) 0%, transparent 50%);
+  filter: blur(60px);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* Glass morphism player chrome */
+.glass-panel {
+  background: var(--glass-surface);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid var(--glass-border);
+}
+
+.settings-shell {
+  background:
+    linear-gradient(180deg, rgba(14, 14, 18, 0.96), rgba(8, 8, 10, 0.93));
+  backdrop-filter: blur(36px);
+  -webkit-backdrop-filter: blur(36px);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.45);
+}
+
+.settings-card {
+  background: rgba(12, 12, 15, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.status-chip-waiting {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.status-chip-listening {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.32);
+  color: rgba(214, 244, 255, 0.96);
+}
+
+.status-chip-thinking {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.3);
+  color: rgba(255, 231, 179, 0.96);
+}
+
+.status-chip-responding {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: rgba(196, 255, 229, 0.96);
+}
+
+.status-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.status-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.28;
+  animation: status-dot-wave 1.2s infinite ease-in-out;
+}
+
+.status-dots span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.status-dots span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes status-dot-wave {
+  0%, 80%, 100% {
+    opacity: 0.28;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
+/* Serif for literary content */
+.serif-content {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: rgba(240, 235, 230, 0.85);
+}
+
+/* Micro-labels */
+.micro-label {
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Pill navigation—bordered, not filled */
+.nav-pill {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 100px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 400;
+  background: transparent;
+  transition: all 0.3s ease;
+}
+
+.nav-pill:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.nav-pill.active {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Gradient mask for scroll fade */
+.scroll-mask {
+  mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+}
