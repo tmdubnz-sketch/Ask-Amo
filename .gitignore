@@ -7,3 +7,7 @@ coverage/
 .env*
 !.env.example
 *.gguf
+*.zip
+llama*.zip
+models/*.zip
+models/*.gguf
