@@ -111,36 +111,41 @@ function buildDashboardHtml(): string {
   </html>`;
 }
 
-function normalizeUrl(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return 'https://example.com';
+function resolveDisplayUrl(url: string): string {
+  if (!url) return '';
+
+  if (url === 'amo://dashboard' || url === 'amo://home') return '';
+
+  if (url.startsWith('amo://search?q=')) {
+    const raw = url.replace('amo://search?q=', '');
+    const query = decodeURIComponent(raw);
+    return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
   }
 
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
+  if (url.startsWith('amo://')) return '';
 
-  return `https://${trimmed}`;
+  if (/^https?:\/\//i.test(url)) return url;
+
+  return `https://${url}`;
 }
 
 export const WebView: React.FC<WebViewProps> = ({ url, onNavigate }) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [currentUrl, setCurrentUrl] = useState(normalizeUrl(url));
-  const [draftUrl, setDraftUrl] = useState(normalizeUrl(url));
+  const [currentUrl, setCurrentUrl] = useState(resolveDisplayUrl(url));
+  const [draftUrl, setDraftUrl] = useState(resolveDisplayUrl(url));
   const [refreshKey, setRefreshKey] = useState(0);
   const [results, setResults] = useState<WebSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [iframeError, setIframeError] = useState<string | null>(null);
 
-  const iframeUrl = useMemo(() => normalizeUrl(currentUrl), [currentUrl]);
+  const iframeUrl = useMemo(() => resolveDisplayUrl(currentUrl), [currentUrl]);
   const isDashboard = currentUrl === DASHBOARD_URL;
   const isSearch = currentUrl.startsWith(SEARCH_URL_PREFIX);
   const searchQuery = isSearch ? decodeURIComponent(currentUrl.slice(SEARCH_URL_PREFIX.length)) : '';
 
   useEffect(() => {
-    const normalized = normalizeUrl(url);
+    const normalized = resolveDisplayUrl(url);
     setCurrentUrl(normalized);
     setDraftUrl(normalized);
     setIframeError(null);
@@ -219,7 +224,7 @@ export const WebView: React.FC<WebViewProps> = ({ url, onNavigate }) => {
               setCurrentUrl(`${SEARCH_URL_PREFIX}${encodeURIComponent(query)}`);
               return;
             }
-            setCurrentUrl(normalizeUrl(normalizedDraft));
+            setCurrentUrl(resolveDisplayUrl(normalizedDraft));
           }}
         >
           <Globe className="h-4 w-4 shrink-0 text-white/45" />
@@ -258,7 +263,7 @@ export const WebView: React.FC<WebViewProps> = ({ url, onNavigate }) => {
                 key={result.url}
                 type="button"
                 onClick={() => {
-                  const nextUrl = normalizeUrl(result.url);
+                  const nextUrl = resolveDisplayUrl(result.url);
                   setCurrentUrl(nextUrl);
                   setDraftUrl(nextUrl);
                 }}

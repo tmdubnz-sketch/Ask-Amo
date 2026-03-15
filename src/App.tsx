@@ -1191,24 +1191,6 @@ export default function App() {
         return;
       }
 
-      const autoAction = detectAutoAction(userPrompt);
-      if (autoAction) {
-       addMessage('user', userPrompt, pendingImage || undefined);
-       const assistantId = addStreamingMessage('assistant');
-       activeAssistantMessageIdRef.current = assistantId;
-        setActiveView(autoAction.view);
-        if (autoAction.webUrl) {
-          setWebViewUrl(autoAction.webUrl);
-       }
-        updateMessage(assistantId, autoAction.reply, false);
-        finalizeMessage(assistantId);
-        await persistExchangeToBrain(userPrompt, autoAction.reply);
-        if (isVoiceModeRef.current) speak(autoAction.reply);
-        setIsLoading(false);
-        setAmoRuntimeState('waiting');
-        return;
-      }
-       
       // Check for deterministic replies first to avoid unnecessary processing
       const deterministicReply = buildDeterministicReply(userPrompt);
       if (deterministicReply !== null) {
@@ -1512,6 +1494,15 @@ export default function App() {
       audioCaptureService.setCallbacks(() => {}, () => {});
     };
   }, [isListening, voiceContinuous]);
+
+  useEffect(() => {
+    if (!isLoading && voiceContinuous && !isListening) {
+      const timer = setTimeout(() => {
+        setIsListening(true);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, voiceContinuous, isListening]);
 
   const handleCopy = (text: string) => navigator.clipboard.writeText(text);
 
