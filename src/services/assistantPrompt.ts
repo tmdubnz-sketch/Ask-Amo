@@ -57,6 +57,14 @@ Never pad. Never truncate something important for the sake of brevity.`;
 - Use Te Aka Maori Dictionary as authority for Maori word meanings.
 - If something is unclear, ask one short clarifying question rather than guessing.`;
 
+  // ── REASONING STEPS ─────────────────────────────────────────────────────────
+  const reasoning = `Reasoning steps:
+- First, understand what the user is asking for.
+- If the user asks a factual question, check if the knowledge context contains relevant information.
+- If the answer is in the knowledge context, use it directly without restating that it's from "the context".
+- If you need information you do not have, say so plainly — do not guess or fabricate details.
+- For complex tasks, think step by step before answering.`;
+
   // ── CAPABILITIES ────────────────────────────────────────────────────────────
   const capabilities = `Amo's available tools and features in this app:
 - Chat: main interface for conversation, file upload, image upload, and voice input
@@ -93,7 +101,8 @@ Use these snapshots when they add accuracy. Prefer local knowledge first if both
 
   // ── ASSEMBLE ────────────────────────────────────────────────────────────────
   const temporal = buildTemporalContext();
-  return [identity, behaviour, temporal, capabilities, language, knowledgeBlock, webBlock]
+  const closer = 'Think step by step. Be direct and grounded.';
+  return [identity, behaviour, temporal, capabilities, language, reasoning, knowledgeBlock, webBlock, closer]
     .filter(Boolean)
     .join('\n\n');
 }

@@ -138,10 +138,11 @@ export const assistantRuntimeService = {
     ]);
 
     const knowledgeContext = knowledgeResults.length > 0
-      ? knowledgeResults.map((result) => result.content).join('\n\n')
+      ? knowledgeResults.map((result, i) => `<doc id='${i + 1}' title='${result.documentName || 'Document'}':>${result.content}</doc>`).join('\n')
       : '';
     const intent = detectIntent(options.userInput, options.messages);
-    const combinedContext = [buildOperationalGuidance(intent), knowledgeContext, memoryContext, options.webContext || '']
+    const hasLongContext = knowledgeContext.length > 1000;
+    const combinedContext = [buildOperationalGuidance(intent), knowledgeContext, memoryContext, options.webContext || '', hasLongContext ? 'Answer using the knowledge above. Be direct and grounded.' : '']
       .filter(Boolean)
       .join('\n\n')
       .trim();
