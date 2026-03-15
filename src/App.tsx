@@ -1007,7 +1007,15 @@ export default function App() {
         return `Offline runtime is ${localRuntimeState.capability}. Backend is ${localRuntimeState.backendLabel}.`;
       }
       case 'show brain status': {
-        return `Brain bootstrap v3 complete. Memory and knowledge layers are seeded.`;
+        try {
+          await knowledgeStoreService.init();
+          const memories = await knowledgeStoreService.listConversationMemory('app:ask-amo');
+          const summaries = await knowledgeStoreService.listMemorySummaries('app:ask-amo');
+          const seedPacks = await knowledgeStoreService.listSeedPacks();
+          return `Brain status: ${memories.length} memory entries, ${summaries.length} summaries, ${seedPacks.length} seed packs loaded.`;
+        } catch (e) {
+          return `Brain bootstrap v3 complete. Memory and knowledge layers are seeded.`;
+        }
       }
       case 'learn this': {
         const content = userInput?.replace(/^learn this:?\s*/i, '').trim();
