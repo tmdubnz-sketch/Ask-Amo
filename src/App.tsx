@@ -50,6 +50,7 @@ import { geminiService } from './services/geminiService';
 import { webLlmService } from './services/webLlmService';
 import { documentService } from './services/documentService';
 import { useModelSettingsStore } from './stores/modelSettingsStore';
+import { injectFileContext } from './services/fileContextService';
 import { vectorDbService } from './services/vectorDbService';
 import { webSearchService, shouldUseWebSearch } from './services/webSearchService';
 import { assistantRuntimeService } from './services/assistantRuntimeService';
@@ -1117,7 +1118,14 @@ export default function App() {
    const handleSend = async () => {
      if (!inputRef.current.trim() || isLoading) return;
      const routedIntent = routeUserIntent(inputRef.current);
-     const userPrompt = routedIntent.canonicalInput || inputRef.current;
+     let userPrompt = routedIntent.canonicalInput || inputRef.current;
+     
+     // Inject @file and @workspace context
+     if (userPrompt.includes('@file:') || userPrompt.includes('@workspace')) {
+       const contextResult = await injectFileContext(userPrompt, currentChatId || 'default');
+       userPrompt = contextResult.enhancedPrompt;
+     }
+     
      const pendingImage = selectedImage;
      const requestId = activeRequestIdRef.current + 1;
      activeRequestIdRef.current = requestId;
