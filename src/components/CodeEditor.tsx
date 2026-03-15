@@ -52,6 +52,8 @@ interface CodeEditorProps {
   initialFileName?: string;
   onRun?: (code: string, language: CodeLanguage) => void;
   onGenerate?: (prompt: string, context: string) => void;
+  suggestedCode?: string | null;
+  onApplySuggestion?: (code: string) => void;
 }
 
 const LANGUAGE_EXTENSIONS: Record<string, CodeLanguage> = {
@@ -151,8 +153,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   initialFileName = 'untitled.py',
   onRun,
   onGenerate,
+  suggestedCode: initialSuggestedCode,
 }) => {
   const [code, setCode] = useState(initialCode);
+  const [suggestedCode, setSuggestedCode] = useState<string | null>(initialSuggestedCode || null);
   const [fileName, setFileName] = useState(initialFileName);
   const [language, setLanguage] = useState<CodeLanguage>(detectLanguage(initialFileName));
   const [isRunning, setIsRunning] = useState(false);
@@ -162,6 +166,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const editorParentRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const sessionIdRef = useRef(crypto.randomUUID());
+
+  useEffect(() => {
+    if (initialSuggestedCode !== undefined) {
+      setSuggestedCode(initialSuggestedCode);
+    }
+  }, [initialSuggestedCode]);
 
   useEffect(() => {
     const lang = detectLanguage(fileName);
@@ -317,9 +327,21 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     }
   };
 
+  const handleApplySuggestion = () => {
+    if (suggestedCode) {
+      setCode(suggestedCode);
+      setSuggestedCode(null);
+    }
+  };
+
+  const handleRejectSuggestion = () => {
+    setSuggestedCode(null);
+  };
+
   const handleClear = () => {
     setCode('');
     setRunOutput('');
+    setSuggestedCode(null);
   };
 
   return (
@@ -409,6 +431,34 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
               )}
             </div>
           </div>
+
+          {suggestedCode && (
+            <div className="glass-panel border border-[#ff4e00]/30 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#ff4e00]" />
+                  <span className="text-sm text-white/80 font-medium">AI Suggested Edit</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleRejectSuggestion}
+                    className="px-3 py-1 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/10 transition-all"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    onClick={handleApplySuggestion}
+                    className="px-3 py-1 rounded-lg text-xs bg-[#ff4e00] text-white hover:bg-[#ff4e00]/80 transition-all"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+              <pre className="text-xs font-mono text-white/70 bg-black/30 rounded-lg p-3 max-h-40 overflow-auto custom-scrollbar">
+                {suggestedCode}
+              </pre>
+            </div>
+          )}
 
           <div className="glass-panel border border-white/10 rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-3">
