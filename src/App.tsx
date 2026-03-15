@@ -792,16 +792,33 @@ export default function App() {
 
   const refreshBrainState = async () => {
     try {
-      const scope = `chat:${currentChatId}`;
-      const [memoryRows, summaryRows, tools, packs] = await Promise.all([
-        amoBrainService.getConversationMemory(scope),
-        amoBrainService.getMemorySummaries(scope),
+      const chatScope = `chat:${currentChatId}`;
+      const appScope = 'app:ask-amo';
+
+      const [
+        chatMemoryRows,
+        appMemoryRows,
+        chatSummaryRows,
+        appSummaryRows,
+        tools,
+        packs,
+      ] = await Promise.all([
+        amoBrainService.getConversationMemory(chatScope),
+        amoBrainService.getConversationMemory(appScope),
+        amoBrainService.getMemorySummaries(chatScope),
+        amoBrainService.getMemorySummaries(appScope),
         amoBrainService.getToolRegistry(),
         amoBrainService.getSeedPacks(),
       ]);
 
-      setBrainMemoryRows(memoryRows);
-      setBrainSummaryRows(summaryRows);
+      const allMemory = [...chatMemoryRows, ...appMemoryRows]
+        .filter((row, idx, arr) => arr.findIndex(r => r.id === row.id) === idx);
+
+      const allSummaries = [...chatSummaryRows, ...appSummaryRows]
+        .filter((row, idx, arr) => arr.findIndex(r => r.id === row.id) === idx);
+
+      setBrainMemoryRows(allMemory);
+      setBrainSummaryRows(allSummaries);
       setToolRegistryRows(tools);
       setSeedPackRows(packs);
       if (packs.length > 0) {
