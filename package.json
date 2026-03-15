@@ -21,6 +21,7 @@
     "cap:assets": "npx @capacitor/assets generate --assetPath assets --android --pwa --iconBackgroundColor \"#0A0A0A\" --iconBackgroundColorDark \"#0A0A0A\" --splashBackgroundColor \"#050505\" --splashBackgroundColorDark \"#050505\""
   },
   "dependencies": {
+    "@capacitor-community/sqlite": "^8.0.1",
     "@capacitor/android": "^8.2.0",
     "@capacitor/app": "^8.0.1",
     "@capacitor/browser": "^8.0.2",

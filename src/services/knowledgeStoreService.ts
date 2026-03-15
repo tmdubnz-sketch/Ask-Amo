@@ -1,4 +1,5 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
+import { Capacitor } from '@capacitor/core';
 
 type SQLiteDb = {
   exec: (arg: string | { sql: string; bind?: unknown[] | Record<string, unknown>; rowMode?: 'object' | 'array'; returnValue?: 'resultRows'; resultRows?: unknown[] }) => unknown;
@@ -133,9 +134,14 @@ export class KnowledgeStoreService {
     const sqlite = await sqlite3InitModule() as unknown as SQLiteModule;
     this.sqlite = sqlite;
 
-    if (sqlite.oo1.JsStorageDb && isBrowser()) {
+    if (Capacitor.isNativePlatform()) {
+      // On native Android, use file-based SQLite - persists across cache clears
+      this.db = new sqlite.oo1.DB('amo-knowledge.sqlite3', 'ct');
+    } else if (sqlite.oo1.JsStorageDb && isBrowser()) {
+      // On web browser, use localStorage-backed SQLite
       this.db = new sqlite.oo1.JsStorageDb('amo-knowledge-store');
     } else {
+      // Fallback to file-based
       this.db = new sqlite.oo1.DB('/amo-knowledge.sqlite3', 'ct');
     }
 
