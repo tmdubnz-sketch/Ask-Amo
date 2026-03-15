@@ -104,7 +104,7 @@ export const assistantRuntimeService = {
       .map((message) => `${message.role === 'user' ? 'User' : 'Amo'}: ${trimText(message.content.replace(/\s+/g, ' '), 120)}`)
       .join('\n');
 
-    const truncatedWebContext = options.webContext ? options.webContext.slice(0, 800).trim() : '';
+    const truncatedWebContext = options.webContext ? options.webContext.slice(0, 2000).trim() : '';
 
     // Search core knowledge for the native offline model
     const knowledgeResults = await vectorDbService.search(options.userInput, 5);
@@ -163,19 +163,27 @@ export const assistantRuntimeService = {
     const compactUser = trimText(options.userInput.replace(/\s+/g, ' ').trim(), 400);
     const compactTurns = trimText(options.contextBundle.recentTurns.replace(/\s+/g, ' ').trim(), 320);
     const compactContext = trimText(options.contextBundle.combinedContext.replace(/\s+/g, ' ').trim(), 600);
+    
+    const compactWeb = options.contextBundle.webContext
+      ? trimText(options.contextBundle.webContext.replace(/\s+/g, ' ').trim(), 800)
+      : '';
 
     const promptParts = [
-      'You are Amo, a grounded, practical AI assistant with a calm NZ voice.',
-      'You are honest, direct, and helpful. You prefer short clear answers but use as many sentences as needed.',
-      'You never make things up. If you do not know, say so plainly.',
+      'You are Amo, a grounded practical AI assistant from Aotearoa New Zealand.',
+      'Be honest, direct, and helpful. Use as many sentences as needed — never truncate an important answer.',
+      'Never make things up. If you do not know, say so plainly.',
     ];
 
     if (compactContext) {
-      promptParts.push(`Context:\n${compactContext}`);
+      promptParts.push(`[Knowledge and memory]\n${compactContext}`);
+    }
+
+    if (compactWeb) {
+      promptParts.push(`[Live web information — use this to answer accurately]\n${compactWeb}`);
     }
 
     if (compactTurns) {
-      promptParts.push(`Recent conversation:\n${compactTurns}`);
+      promptParts.push(`[Recent conversation]\n${compactTurns}`);
     }
 
     promptParts.push(`User: ${compactUser}`);

@@ -54,6 +54,7 @@ import { webSearchService, shouldUseWebSearch } from './services/webSearchServic
 import { assistantRuntimeService } from './services/assistantRuntimeService';
 import { knowledgeBootstrapService } from './services/knowledgeBootstrapService';
 import { normalizeTranscriptText, routeUserIntent } from './services/intentRouterService';
+import { parseUserIntent, buildKnowledgeQuery, shouldForceRetrieval, shouldTriggerWebSearch } from './services/intentPatternService';
 import { nativeChatSessionService } from './services/nativeChatSessionService';
 import { nativeReplyCoordinator, buildDeterministicReply } from './services/nativeReplyCoordinator';
 import {
@@ -924,8 +925,8 @@ const chatContainerRef = useRef<HTMLDivElement>(null);
     }
   };
 
-  const resolveWebAssistContext = async (userPrompt: string): Promise<string | undefined> => {
-    const shouldSearch = navigator.onLine && isWebSearchEnabled && shouldUseWebSearch(userPrompt);
+const resolveWebAssistContext = async (userPrompt: string, forceSearch = false): Promise<string | undefined> => {
+    const shouldSearch = navigator.onLine && isWebSearchEnabled && (forceSearch || shouldUseWebSearch(userPrompt));
     if (!shouldSearch) {
       setIsWebAssistActive(false);
       return undefined;
@@ -934,8 +935,8 @@ const chatContainerRef = useRef<HTMLDivElement>(null);
     setIsWebAssistActive(true);
     try {
       const results = await withTimeout(
-        webSearchService.search(userPrompt, 3),
-        8000,
+        webSearchService.search(userPrompt, 5),
+        12000,
         'Web assist timed out.'
       );
 
@@ -943,9 +944,7 @@ const chatContainerRef = useRef<HTMLDivElement>(null);
         return undefined;
       }
 
-      if (shouldUseWebSearch(userPrompt)) {
-        setWebViewUrl(`amo://search?q=${encodeURIComponent(userPrompt)}`);
-      }
+      setWebViewUrl(`amo://search?q=${encodeURIComponent(userPrompt)}`);
 
       return webSearchService.formatResults(results);
     } catch (webError) {
@@ -1041,17 +1040,22 @@ const chatContainerRef = useRef<HTMLDivElement>(null);
       activeAssistantMessageIdRef.current = assistantId;
      
      // Measure the total response generation time
-     try {
-        await measure('Total Response Generation', async () => {
-         const history = messages.map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
-          const webSearchContext = await resolveWebAssistContext(userPrompt);
+try {
+         await measure('Total Response Generation', async () => {
+          const history = messages.map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
+          
+          const parsedIntent = parseUserIntent(userPrompt);
+          const forceWebSearch = shouldTriggerWebSearch(parsedIntent, userPrompt);
+          const knowledgeQuery = shouldForceRetrieval(parsedIntent) ? buildKnowledgeQuery(parsedIntent) : userPrompt;
+          
+          const webSearchContext = await resolveWebAssistContext(userPrompt, forceWebSearch);
           if (isRequestCanceled(requestId)) {
             return;
           }
 
-         const bundle = selectedModel.family === 'native'
-           ? await assistantRuntimeService.buildNativeContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, webContext: webSearchContext })
-           : await assistantRuntimeService.buildContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, includeKnowledge: true, webContext: webSearchContext });
+          const bundle = selectedModel.family === 'native'
+            ? await assistantRuntimeService.buildNativeContextBundle({ scope: `chat:${currentChatId}`, userInput: knowledgeQuery, messages: history, webContext: webSearchContext })
+            : await assistantRuntimeService.buildContextBundle({ scope: `chat:${currentChatId}`, userInput: knowledgeQuery, messages: history, includeKnowledge: true, webContext: webSearchContext });
 
          const nativeSelected = selectedModel.family === 'native';
          if (nativeSelected && localRuntimeState.capability !== 'ready') {
