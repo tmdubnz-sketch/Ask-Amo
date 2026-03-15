@@ -1340,35 +1340,37 @@ export default function App() {
 
   useEffect(() => {
     if (isListening) {
-      audioCaptureService.onSpeechStart = () => {
-        console.log('[Voice] Speech detected');
-      };
-      audioCaptureService.onSpeechStop = async (audioBlob: Blob) => {
-        console.log('[Voice] Speech stopped, transcribing...');
-        setIsTranscribing(true);
-        try {
-          const text = await groqService.transcribe(audioBlob);
-          console.log('[Voice] Transcribed:', text);
-          const currentInput = inputRef.current;
-          const newInput = currentInput ? `${currentInput} ${text}` : text;
-          setInput(newInput);
-          inputRef.current = newInput;
-          textareaRef.current?.focus();
-        } catch (err) {
-          console.error('[Voice] Transcription failed:', err);
-          setError('Voice transcription failed. Make sure Groq API key is configured.');
-        } finally {
-          setIsTranscribing(false);
+      audioCaptureService.setCallbacks(
+        (text: string, isFinal: boolean) => {
+          if (!isFinal) {
+            console.log('[Voice] Interim:', text);
+            return;
+          }
+          console.log('[Voice] Final:', text);
+          if (!text.trim()) {
+            setIsListening(false);
+            return;
+          }
+          inputRef.current = text;
+          setInput(text);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              void handleSend();
+            });
+          });
+          setIsListening(false);
+        },
+        (error: string) => {
+          console.error('[Voice] Error:', error);
+          setError(error);
           setIsListening(false);
         }
-      };
+      );
     } else {
-      audioCaptureService.onSpeechStart = null;
-      audioCaptureService.onSpeechStop = null;
+      audioCaptureService.setCallbacks(() => {}, () => {});
     }
     return () => {
-      audioCaptureService.onSpeechStart = null;
-      audioCaptureService.onSpeechStop = null;
+      audioCaptureService.setCallbacks(() => {}, () => {});
     };
   }, [isListening]);
 
@@ -1584,7 +1586,7 @@ export default function App() {
 
             {activeView === 'webview' && (
               <div className="h-full max-w-4xl mx-auto w-full min-h-[420px]">
-                <WebView url={webViewUrl} />
+                <WebView url={webViewUrl} onNavigate={(url) => console.log('[WebView] Navigated to:', url)} />
               </div>
             )}
 

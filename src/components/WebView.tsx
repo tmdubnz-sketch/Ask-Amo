@@ -6,6 +6,7 @@ import { webSearchService, type WebSearchResult } from '../services/webSearchSer
 
 interface WebViewProps {
   url: string;
+  onNavigate?: (url: string) => void;
 }
 
 const DASHBOARD_URL = 'amo://dashboard';
@@ -123,7 +124,7 @@ function normalizeUrl(value: string): string {
   return `https://${trimmed}`;
 }
 
-export const WebView: React.FC<WebViewProps> = ({ url }) => {
+export const WebView: React.FC<WebViewProps> = ({ url, onNavigate }) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [currentUrl, setCurrentUrl] = useState(normalizeUrl(url));
   const [draftUrl, setDraftUrl] = useState(normalizeUrl(url));
@@ -139,9 +140,13 @@ export const WebView: React.FC<WebViewProps> = ({ url }) => {
   const searchQuery = isSearch ? decodeURIComponent(currentUrl.slice(SEARCH_URL_PREFIX.length)) : '';
 
   useEffect(() => {
-    setCurrentUrl(url);
-    setDraftUrl(url);
+    const normalized = normalizeUrl(url);
+    setCurrentUrl(normalized);
+    setDraftUrl(normalized);
     setIframeError(null);
+    if (normalized && normalized !== currentUrl) {
+      onNavigate?.(normalized);
+    }
   }, [url]);
 
   useEffect(() => {
