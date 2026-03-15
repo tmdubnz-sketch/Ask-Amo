@@ -1614,8 +1614,27 @@ export default function App() {
               <Zap className="w-3.5 h-3.5 text-[#ff4e00]/70" aria-hidden="true" />
               <span className="micro-label !text-inherit">{isVoiceMode ? 'Voice Active' : 'Text First'}</span>
             </div>
-            <button onClick={clearChat} className="p-2 text-white/40 hover:text-white/80 transition-colors" title="Clear conversation" aria-label="Clear conversation"><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
-            <button onClick={() => setIsSidebarOpen(true)} className={cn("p-2 rounded-full transition-colors", isSidebarOpen ? "bg-[#ff4e00]/20 text-[#ff4e00]" : "text-white/40 hover:text-white/80")} title="Amo Hub" aria-label="Open sidebar"><Settings className="w-4 h-4" aria-hidden="true" /></button>
+
+            {isLoading && (
+              <button
+                onClick={handleCancelThinking}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/15 border border-red-500/25 text-red-400 text-[11px] font-bold uppercase tracking-widest transition-all hover:bg-red-500/25 animate-pulse"
+                title="Stop Amo response"
+                aria-label="Stop response"
+              >
+                <X className="w-3 h-3" aria-hidden="true" />
+                Stop
+              </button>
+            )}
+
+            <button
+              onClick={clearChat}
+              className="p-2 text-white/40 hover:text-white/80 transition-colors"
+              title="Clear conversation"
+              aria-label="Clear conversation"
+            >
+              <Trash2 className="w-4 h-4" aria-hidden="true" />
+            </button>
            </div>
        </header>
 
