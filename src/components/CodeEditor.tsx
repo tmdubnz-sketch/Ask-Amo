@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Play, 
   Save, 
@@ -10,6 +10,15 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
+import { EditorState } from '@codemirror/state';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { javascript } from '@codemirror/lang-javascript';
+import { json } from '@codemirror/lang-json';
+import { markdown } from '@codemirror/lang-markdown';
+import { python } from '@codemirror/lang-python';
+import { oneDark } from '@codemirror/theme-one-dark';
+import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { terminalService } from '../services/terminalService';
 import { cn } from '../lib/utils';
 
@@ -17,6 +26,8 @@ export type CodeLanguage =
   | 'python' 
   | 'javascript' 
   | 'typescript' 
+  | 'json'
+  | 'markdown'
   | 'html' 
   | 'css'
   | 'java'
@@ -52,6 +63,9 @@ const LANGUAGE_EXTENSIONS: Record<string, CodeLanguage> = {
   cts: 'typescript',
   jsx: 'javascript',
   tsx: 'typescript',
+  json: 'json',
+  md: 'markdown',
+  markdown: 'markdown',
   html: 'html',
   htm: 'html',
   css: 'css',
@@ -80,6 +94,8 @@ const LANGUAGE_LABELS: Record<CodeLanguage, string> = {
   python: 'Python',
   javascript: 'JavaScript',
   typescript: 'TypeScript',
+  json: 'JSON',
+  markdown: 'Markdown',
   html: 'HTML',
   css: 'CSS',
   java: 'Java',
@@ -103,6 +119,8 @@ const LANGUAGE_COMMANDS: Record<CodeLanguage, string> = {
   python: 'python3',
   javascript: 'node',
   typescript: 'npx ts-node',
+  json: 'cat',
+  markdown: 'cat',
   html: 'open',
   css: 'open',
   java: 'java',
@@ -140,7 +158,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const [runOutput, setRunOutput] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const [prompt, setPrompt] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorParentRef = useRef<HTMLDivElement>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
   const sessionIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
@@ -154,9 +173,74 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     setLanguage(detectLanguage(newName));
   };
 
-  const handleCodeChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setCode(e.target.value);
-  };
+  const getLanguageExtension = useCallback(() => {
+    switch (language) {
+      case 'javascript':
+      case 'typescript':
+        return javascript({ jsx: true, typescript: language === 'typescript' });
+      case 'json':
+        return json();
+      case 'markdown':
+        return markdown();
+      case 'python':
+        return python();
+      default:
+        return javascript({ jsx: true });
+    }
+  }, [language]);
+
+  useEffect(() => {
+    if (!editorParentRef.current) return;
+
+    const extensions = [
+      lineNumbers(),
+      highlightActiveLine(),
+      highlightActiveLineGutter(),
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      oneDark,
+      syntaxHighlighting(defaultHighlightStyle),
+      getLanguageExtension(),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          setCode(update.state.doc.toString());
+        }
+      }),
+      EditorView.theme({
+        '&': { height: '100%', fontSize: '13px' },
+        '.cm-scroller': { overflow: 'auto' },
+        '.cm-content': { fontFamily: 'monospace' },
+      }),
+    ];
+
+    const state = EditorState.create({
+      doc: code,
+      extensions,
+    });
+
+    const view = new EditorView({
+      state,
+      parent: editorParentRef.current,
+    });
+
+    editorViewRef.current = view;
+
+    return () => {
+      view.destroy();
+    };
+  }, [language]); // Re-create editor when language changes
+
+  useEffect(() => {
+    // Update content when code prop changes externally
+    if (editorViewRef.current) {
+      const currentDoc = editorViewRef.current.state.doc.toString();
+      if (currentDoc !== code) {
+        editorViewRef.current.dispatch({
+          changes: { from: 0, to: currentDoc.length, insert: code }
+        });
+      }
+    }
+  }, [code]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
@@ -286,16 +370,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 
       <div className="flex-1 flex gap-3 min-h-0">
         <div className="flex-1 flex flex-col glass-panel border border-white/10 rounded-2xl overflow-hidden">
-          <div className="px-4 py-2 border-b border-white/10 bg-white/5">
+          <div className="px-4 py-2 border-b border-white/10 bg-white/5 flex items-center justify-between">
             <span className="text-xs text-white/40 font-mono">Editor</span>
+            <span className="text-xs text-[#ff4e00] font-mono">{LANGUAGE_LABELS[language]}</span>
           </div>
-          <textarea
-            ref={textareaRef}
-            value={code}
-            onChange={handleCodeChange}
-            className="flex-1 w-full bg-transparent px-4 py-3 text-sm font-mono text-white/90 resize-none outline-none custom-scrollbar"
-            placeholder={`# Write your ${LANGUAGE_LABELS[language]} code here...\n`}
-            spellCheck={false}
+          <div 
+            ref={editorParentRef} 
+            className="flex-1 overflow-hidden"
           />
         </div>
 

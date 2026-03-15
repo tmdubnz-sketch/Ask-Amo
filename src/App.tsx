@@ -49,6 +49,7 @@ import { openaiService } from './services/openaiService';
 import { geminiService } from './services/geminiService';
 import { webLlmService } from './services/webLlmService';
 import { documentService } from './services/documentService';
+import { useModelSettingsStore } from './stores/modelSettingsStore';
 import { vectorDbService } from './services/vectorDbService';
 import { webSearchService, shouldUseWebSearch } from './services/webSearchService';
 import { assistantRuntimeService } from './services/assistantRuntimeService';
@@ -1036,6 +1037,21 @@ export default function App() {
         }
         return null;
       }
+      case 'upgrade brain': {
+        const { webAssistService } = await import('./services/webAssistService');
+        const weakTopics = ['NZ current events', 'latest technology news', 'Aotearoa news'];
+        let learned = 0;
+        for (const topic of weakTopics) {
+          try {
+            const content = await webAssistService.resolve(topic);
+            if (content) {
+              await amoBrainService.learnFact(topic, content.slice(0, 800), ['web-upgrade', 'news']);
+              learned++;
+            }
+          } catch {}
+        }
+        return `Brain upgraded. Fetched and stored ${learned} topic${learned === 1 ? '' : 's'}.`;
+      }
       default:
         return null;
     }
@@ -1194,8 +1210,14 @@ export default function App() {
             }
             return result;
           }
+          const params = useModelSettingsStore.getState();
           const prompt = `${systemPrompt}\n\nUser: ${msgs[msgs.length-1]?.content}\nAmo:`;
-          const res = await nativeOfflineLlmService.generate({ prompt });
+          const res = await nativeOfflineLlmService.generate({ 
+            prompt,
+            temperature: params.temperature,
+            top_p: params.topP,
+            max_tokens: params.maxTokens,
+          });
           return res?.text?.trim() || '';
         };
 
@@ -1393,11 +1415,42 @@ export default function App() {
 
   const handleDocUpload = async (e: any) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    try {
+      setIsUploadingDoc(true);
       const parsed = await documentService.parseFile(file);
       const id = crypto.randomUUID();
-      await vectorDbService.addDocument({ id, documentId: id, documentName: file.name, content: parsed.content, metadata: { assetKind: 'document' } });
-      setUploadedDocs([...uploadedDocs, { id, name: file.name, kind: 'document' }]);
+
+      await vectorDbService.addDocument({
+        id,
+        documentId: id,
+        documentName: parsed.title || file.name,
+        content: parsed.content,
+        metadata: {
+          assetKind: 'document',
+          format: parsed.format,
+          wordCount: String(parsed.wordCount),
+          ...parsed.metadata,
+        },
+      });
+
+      setUploadedDocs(prev => [...prev, {
+        id,
+        name: parsed.title || file.name,
+        kind: 'document',
+      }]);
+
+      setDownloadStatus(
+        `Imported ${parsed.title || file.name} — ` +
+        `${parsed.wordCount.toLocaleString()} words as ${parsed.format.toUpperCase()}`
+      );
+
+    } catch (uploadError) {
+      setError(getErrorMessage(uploadError, 'Failed to import file.'));
+    } finally {
+      setIsUploadingDoc(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -1555,6 +1608,7 @@ export default function App() {
     if (!file) return;
 
     try {
+      // Handle images as before
       if (file.type.startsWith('image/')) {
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -1570,17 +1624,12 @@ export default function App() {
         return;
       }
 
-      if (
-        file.type === 'application/pdf'
-        || file.type === 'text/plain'
-        || file.type === 'text/markdown'
-        || file.type.startsWith('audio/')
-      ) {
+      // Route everything else through documentService (handles all supported formats)
+      try {
         await handleDocUpload({ target: { files: [file] } });
-        return;
+      } catch (e) {
+        setError(getErrorMessage(e, 'Could not import that file type.'));
       }
-
-      setError('That upload type is not supported yet. Use image, PDF, TXT, Markdown, or audio files.');
     } catch (uploadError) {
       setError(getErrorMessage(uploadError, 'Failed to process uploaded file.'));
     } finally {
@@ -1802,7 +1851,7 @@ export default function App() {
                )}
               <div className="flex items-stretch gap-3 relative">
                 <button onClick={() => fileInputRef.current?.click()} className="h-[60px] w-14 shrink-0 rounded-2xl glass-panel border border-white/5 flex items-center justify-center text-white/40 hover:border-[#ff4e00]/30 transition-all active:scale-95 shadow-xl"><Plus className="w-5 h-5" /></button>
-                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*,video/*,audio/*,.pdf,.txt,.md" className="hidden" />
+                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept={documentService.getSupportedExtensions() + ',image/*'} className="hidden" />
                 <div className="relative flex-1 flex items-stretch">
                   <textarea ref={textareaRef} value={input} onChange={handleInput} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="Chat with Amo..." className="w-full glass-panel border border-white/5 rounded-[1.75rem] px-6 py-[18px] pr-28 text-[15px] focus:outline-none focus:border-[#ff4e00]/50 resize-none min-h-[60px] h-[60px] shadow-2xl transition-all" rows={1} />
                    <div className="absolute right-14 top-1/2 -translate-y-1/2">

@@ -148,6 +148,9 @@ export const nativeOfflineLlmService = {
 
   async generate(options: {
     prompt: string;
+    temperature?: number;
+    top_p?: number;
+    max_tokens?: number;
   }): Promise<{ text: string; status: NativeOfflineStatus } | null> {
     if (!Capacitor.isNativePlatform()) {
       return null;

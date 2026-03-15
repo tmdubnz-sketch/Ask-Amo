@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useModelSettingsStore } from '../stores/modelSettingsStore';
 import {
   MessageSquare,
   FolderOpen,
@@ -447,6 +448,8 @@ function HelpPanel(props: SidebarProps) {
 }
 
 function SettingsPanel(props: SidebarProps) {
+  const { temperature, topP, maxTokens, setTemperature, setTopP, setMaxTokens } = useModelSettingsStore();
+  
   return (
     <>
       <PanelHeader title="Settings" subtitle="App preferences and configuration" />
@@ -457,6 +460,59 @@ function SettingsPanel(props: SidebarProps) {
           <ToggleRow label="Web search" description="Search before answering" value={props.isWebSearchEnabled} onToggle={props.onToggleWebSearch} icon={Search} />
           <ToggleRow label="Deep think" description="More careful reasoning" value={props.isDeepThinkEnabled} onToggle={props.onToggleDeepThink} icon={Brain} />
         </div>
+        
+        <SectionLabel>Model Inference</SectionLabel>
+        <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-3 space-y-4">
+          <div>
+            <div className="flex justify-between text-[10px] text-white/60 mb-1">
+              <span>Temperature</span>
+              <span>{temperature.toFixed(1)}</span>
+            </div>
+            <input
+              type="range"
+              min="0.1"
+              max="1.5"
+              step="0.1"
+              value={temperature}
+              onChange={(e) => setTemperature(Number(e.target.value))}
+              className="w-full accent-[#ff4e00]"
+            />
+            <p className="text-[9px] text-white/40 mt-1">Higher = more creative, Lower = more focused</p>
+          </div>
+          <div>
+            <div className="flex justify-between text-[10px] text-white/60 mb-1">
+              <span>Top P</span>
+              <span>{topP.toFixed(1)}</span>
+            </div>
+            <input
+              type="range"
+              min="0.1"
+              max="1.0"
+              step="0.1"
+              value={topP}
+              onChange={(e) => setTopP(Number(e.target.value))}
+              className="w-full accent-[#ff4e00]"
+            />
+            <p className="text-[9px] text-white/40 mt-1">Nucleus sampling threshold</p>
+          </div>
+          <div>
+            <div className="flex justify-between text-[10px] text-white/60 mb-1">
+              <span>Max Tokens</span>
+              <span>{maxTokens}</span>
+            </div>
+            <input
+              type="range"
+              min="256"
+              max="4096"
+              step="256"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(Number(e.target.value))}
+              className="w-full accent-[#ff4e00]"
+            />
+            <p className="text-[9px] text-white/40 mt-1">Maximum response length</p>
+          </div>
+        </div>
+        
         <SectionLabel>Data</SectionLabel>
         <div className="space-y-0.5">
           <ActionItem icon={Trash2} label="Clear all memory" description="Wipe brain notes and summaries" onClick={props.onClearMemory} danger />
