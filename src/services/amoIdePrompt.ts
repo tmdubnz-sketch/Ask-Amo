@@ -146,3 +146,13 @@ export function formatToolResult(call: IdeToolCall, result: string, success: boo
   const status = success ? 'SUCCESS' : 'FAILED';
   return `[Tool result: ${call.tool} — ${status}]\n${result}`;
 }
+
+export async function buildIdeSystemPromptWithContext(
+  ctx: IdeContext,
+  chatId: string
+): Promise<string> {
+  const { workspaceContextService } = await import('./workspaceContextService');
+  const snapshot = await workspaceContextService.buildSnapshot(chatId);
+  const workspaceBlock = workspaceContextService.formatForPrompt(snapshot);
+  return `${workspaceBlock}\n\n${buildIdeSystemPrompt(ctx)}`;
+}
