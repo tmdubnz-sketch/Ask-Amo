@@ -1,0 +1,7 @@
+{
+  "name": "My Bro",
+  "description": "A private, offline-first chatbot centered on Amo, a grounded New Zealand Maori assistant, with browser-based AI via WebGPU and voice features.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
