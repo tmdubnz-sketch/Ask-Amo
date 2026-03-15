@@ -72,6 +72,10 @@ import { MessageList } from './components/MessageList';
 import { AmoAvatar } from './components/AmoAvatar';
 import { Sidebar, type SidebarTab } from './components/Sidebar';
 import { AMO_STARTER_PACKS } from './data/amoStarterPacks';
+import { amoToolCoordinator } from './services/amoToolCoordinator';
+import { isIdeIntent } from './services/amoIdePrompt';
+import { runIdeLoop, matchTaskTemplate } from './services/amoIdeLoop';
+import { extractSlots, slotsToKnowledgeQuery, slotsToPromptHint } from './services/slotExtractorService';
 import { AVAILABLE_MODELS, type ModelConfig, type ChatSession } from './types';
 import { apiKeyStorage } from './services/apiKeyStorage';
 import { amoBrainService } from './services/amoBrainService';
@@ -486,6 +490,7 @@ export default function App() {
   
   const [isVoiceMode, setIsVoiceMode] = useState(() => localStorage.getItem('amo_voice_mode') === 'true');
   const [isListening, setIsListening] = useState(false);
+  const [voiceContinuous, setVoiceContinuous] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isDeepThinkEnabled, setIsDeepThinkEnabled] = useState(() => localStorage.getItem('amo_deep_think_enabled') === 'true');
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(() => localStorage.getItem('amo_web_search_enabled') !== 'false');
@@ -1100,12 +1105,94 @@ export default function App() {
           await persistExchangeToBrain(userPrompt, offlineReply);
           setIsLoading(false);
          setAmoRuntimeState('waiting');
-         return;
-       }
-     }
+          return;
+        }
+      }
 
-     const autoAction = detectAutoAction(userPrompt);
-     if (autoAction) {
+      // IDE tasks — Amo actually executes, not just opens
+      if (isIdeIntent(userPrompt)) {
+        const slots = extractSlots(userPrompt);
+        const enrichedQuery = slotsToKnowledgeQuery(slots);
+        const promptHint = slotsToPromptHint(slots);
+
+        addMessage('user', userPrompt, pendingImage || undefined);
+        const assistantId = addStreamingMessage('assistant');
+        activeAssistantMessageIdRef.current = assistantId;
+
+        updateMessage(assistantId, '_Working on it..._', true);
+
+        const toolResult = await amoToolCoordinator.handle(
+          slots, userPrompt, currentChatId,
+          { isOnline: navigator.onLine, isWebSearchEnabled, currentWebViewUrl: webViewUrl }
+        );
+
+        if (toolResult.viewSwitch) setActiveView(toolResult.viewSwitch as ActiveView);
+        if (toolResult.webViewUrl) setWebViewUrl(toolResult.webViewUrl);
+
+        if (toolResult.instantReply && !toolResult.contextBlock) {
+          updateMessage(assistantId, toolResult.instantReply, false);
+          finalizeMessage(assistantId);
+          await persistExchangeToBrain(userPrompt, toolResult.instantReply);
+          if (isVoiceModeRef.current) void speak(toolResult.instantReply);
+          setIsLoading(false);
+          setAmoRuntimeState('waiting');
+          return;
+        }
+
+        const history = messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+        const bundle = await assistantRuntimeService.buildContextBundle({
+          scope: `chat:${currentChatId}`,
+          userInput: enrichedQuery,
+          messages: history,
+          includeKnowledge: true,
+          webContext: undefined,
+        }).catch(() => ({ combinedContext: '', knowledgeContext: '', memoryContext: '', webContext: '', intent: 'task', recentTurns: '' }));
+
+        bundle.combinedContext = [promptHint, toolResult.contextBlock, bundle.combinedContext].filter(Boolean).join('\n\n');
+
+        const template = matchTaskTemplate(userPrompt);
+        const taskInput = template ? `${userPrompt}\n\nPlan:\n${template}` : userPrompt;
+
+        const generateFn = async (msgs: Array<{role: string; content: string}>, systemPrompt: string): Promise<string> => {
+          if (selectedModel.isCloud) {
+            let result = '';
+            const handler = (t: string) => { result = t; };
+            if (selectedModel.family === 'groq') {
+              result = await groqService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+            }
+            return result;
+          }
+          const prompt = `${systemPrompt}\n\nUser: ${msgs[msgs.length-1]?.content}\nAmo:`;
+          const res = await nativeOfflineLlmService.generate({ prompt });
+          return res?.text?.trim() || '';
+        };
+
+        const loopResult = await runIdeLoop({
+          chatId: currentChatId,
+          userInput: taskInput,
+          baseContext: bundle.combinedContext,
+          isRequestCanceled: () => isRequestCanceled(requestId),
+          onPartialReply: (text) => { if (!isRequestCanceled(requestId)) updateMessage(assistantId, text, false); },
+          onStatus: (s) => { console.info('[IDE]', s); },
+          onViewSwitch: (v) => setActiveView(v as ActiveView),
+          onWebViewUrl: (url) => setWebViewUrl(url),
+          onPreviewFile: (_p, _c) => setActiveView('editor'),
+          generate: generateFn,
+        });
+
+        if (!isRequestCanceled(requestId)) {
+          updateMessage(assistantId, loopResult.finalReply, false);
+          finalizeMessage(assistantId);
+          await persistExchangeToBrain(userPrompt, loopResult.finalReply);
+          if (isVoiceModeRef.current) void speak(loopResult.finalReply);
+        }
+        setIsLoading(false);
+        setAmoRuntimeState('waiting');
+        return;
+      }
+
+      const autoAction = detectAutoAction(userPrompt);
+      if (autoAction) {
        addMessage('user', userPrompt, pendingImage || undefined);
        const assistantId = addStreamingMessage('assistant');
        activeAssistantMessageIdRef.current = assistantId;
@@ -1398,11 +1485,19 @@ export default function App() {
           inputRef.current = text;
           setInput(text);
           requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              void handleSend();
+            requestAnimationFrame(async () => {
+              await handleSend();
+              if (voiceContinuous && !isLoading) {
+                setTimeout(() => {
+                  setIsListening(true);
+                  void audioCaptureService.start();
+                }, 800);
+              }
             });
           });
-          setIsListening(false);
+          if (!voiceContinuous) {
+            setIsListening(false);
+          }
         },
         (error: string) => {
           console.error('[Voice] Error:', error);
@@ -1416,7 +1511,7 @@ export default function App() {
     return () => {
       audioCaptureService.setCallbacks(() => {}, () => {});
     };
-  }, [isListening]);
+  }, [isListening, voiceContinuous]);
 
   const handleCopy = (text: string) => navigator.clipboard.writeText(text);
 
@@ -1514,13 +1609,23 @@ export default function App() {
            </div>
         
          <div className="flex items-center gap-2">
-           <div className="hidden md:flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-white/50">
-             <Zap className="w-3.5 h-3.5 text-[#ff4e00]/70" aria-hidden="true" />
-             <span className="micro-label !text-inherit">{isVoiceMode ? 'Voice Active' : 'Text First'}</span>
-           </div>
-           <button onClick={clearChat} className="p-2 text-white/40 hover:text-white/80 transition-colors" title="Clear conversation" aria-label="Clear conversation"><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
+            {isLoading && (
+              <button
+                onClick={handleCancelThinking}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-bold transition-all hover:bg-red-500/25 animate-pulse"
+                title="Cancel Amo response"
+              >
+                <X className="w-3.5 h-3.5" />
+                Stop
+              </button>
+            )}
+            <div className="hidden md:flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-white/50">
+              <Zap className="w-3.5 h-3.5 text-[#ff4e00]/70" aria-hidden="true" />
+              <span className="micro-label !text-inherit">{isVoiceMode ? 'Voice Active' : 'Text First'}</span>
+            </div>
+            <button onClick={clearChat} className="p-2 text-white/40 hover:text-white/80 transition-colors" title="Clear conversation" aria-label="Clear conversation"><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
             <button onClick={() => setIsSidebarOpen(true)} className={cn("p-2 rounded-full transition-colors", isSidebarOpen ? "bg-[#ff4e00]/20 text-[#ff4e00]" : "text-white/40 hover:text-white/80")} title="Amo Hub" aria-label="Open sidebar"><Settings className="w-4 h-4" aria-hidden="true" /></button>
-         </div>
+           </div>
        </header>
 
         <AnimatePresence>
