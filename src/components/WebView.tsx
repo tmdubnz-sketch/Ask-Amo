@@ -131,6 +131,7 @@ export const WebView: React.FC<WebViewProps> = ({ url }) => {
   const [results, setResults] = useState<WebSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [iframeError, setIframeError] = useState<string | null>(null);
 
   const iframeUrl = useMemo(() => normalizeUrl(currentUrl), [currentUrl]);
   const isDashboard = currentUrl === DASHBOARD_URL;
@@ -140,6 +141,7 @@ export const WebView: React.FC<WebViewProps> = ({ url }) => {
   useEffect(() => {
     setCurrentUrl(url);
     setDraftUrl(url);
+    setIframeError(null);
   }, [url]);
 
   useEffect(() => {
@@ -264,6 +266,19 @@ export const WebView: React.FC<WebViewProps> = ({ url }) => {
             ))}
           </div>
         </div>
+      ) : iframeError ? (
+        <div className="flex h-full w-full flex-col items-center justify-center bg-[#050505] p-6 text-center">
+          <Globe className="h-12 w-12 text-white/20 mb-4" />
+          <h3 className="text-lg font-semibold text-white mb-2">Cannot display this page</h3>
+          <p className="text-sm text-white/50 mb-4">{iframeError}</p>
+          <p className="text-xs text-white/30 mb-4">This website blocks embedding. Try opening in your device browser instead.</p>
+          <button
+            onClick={() => { setIframeError(null); setRefreshKey(r => r + 1); }}
+            className="px-4 py-2 rounded-full border border-[#ff4e00]/30 bg-[#ff4e00]/10 text-[#ff8a5c] text-sm font-medium hover:bg-[#ff4e00]/20 transition-all"
+          >
+            Try Again
+          </button>
+        </div>
       ) : (
         <iframe
           ref={iframeRef}
@@ -272,6 +287,8 @@ export const WebView: React.FC<WebViewProps> = ({ url }) => {
           title="Android WebView"
           className={cn('h-full w-full border-0 bg-white')}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
+          onLoad={() => setIframeError(null)}
+          onError={() => setIframeError('Failed to load this webpage. The site may be blocking embedded browsers.')}
         />
       )}
     </div>

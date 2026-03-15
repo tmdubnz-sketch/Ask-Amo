@@ -485,6 +485,7 @@ export default function App() {
   
   const [isVoiceMode, setIsVoiceMode] = useState(() => localStorage.getItem('amo_voice_mode') === 'true');
   const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [isDeepThinkEnabled, setIsDeepThinkEnabled] = useState(() => localStorage.getItem('amo_deep_think_enabled') === 'true');
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(() => localStorage.getItem('amo_web_search_enabled') !== 'false');
   const [urlImportValue, setUrlImportValue] = useState('');
@@ -1336,6 +1337,40 @@ export default function App() {
       await audioCaptureService.start();
     }
   };
+
+  useEffect(() => {
+    if (isListening) {
+      audioCaptureService.onSpeechStart = () => {
+        console.log('[Voice] Speech detected');
+      };
+      audioCaptureService.onSpeechStop = async (audioBlob: Blob) => {
+        console.log('[Voice] Speech stopped, transcribing...');
+        setIsTranscribing(true);
+        try {
+          const text = await groqService.transcribe(audioBlob);
+          console.log('[Voice] Transcribed:', text);
+          const currentInput = inputRef.current;
+          const newInput = currentInput ? `${currentInput} ${text}` : text;
+          setInput(newInput);
+          inputRef.current = newInput;
+          textareaRef.current?.focus();
+        } catch (err) {
+          console.error('[Voice] Transcription failed:', err);
+          setError('Voice transcription failed. Make sure Groq API key is configured.');
+        } finally {
+          setIsTranscribing(false);
+          setIsListening(false);
+        }
+      };
+    } else {
+      audioCaptureService.onSpeechStart = null;
+      audioCaptureService.onSpeechStop = null;
+    }
+    return () => {
+      audioCaptureService.onSpeechStart = null;
+      audioCaptureService.onSpeechStop = null;
+    };
+  }, [isListening]);
 
   const handleCopy = (text: string) => navigator.clipboard.writeText(text);
 
