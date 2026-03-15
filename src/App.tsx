@@ -1281,6 +1281,8 @@ export default function App() {
             setInput((prev) => prev + (prev ? ' ' : '') + text);
             inputRef.current = inputRef.current + (inputRef.current ? ' ' : '') + text;
             textareaRef.current?.focus();
+            // Auto-send after transcription
+            setTimeout(() => handleSend(), 300);
           }
         } catch (err) {
           console.error('[Voice] Transcription failed:', err);
