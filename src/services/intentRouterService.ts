@@ -3,6 +3,7 @@ export interface IntentRouteResult {
   instantReply?: string;
   offlineCommand?: string;
   preferWebAssist?: boolean;
+  forceRetrieval?: boolean;
 }
 
 function normalizeWhitespace(text: string): string {
@@ -98,6 +99,23 @@ export function routeUserIntent(rawInput: string): IntentRouteResult {
     return { canonicalInput };
   }
 
+  // --- Self-Knowledge Patterns: force retrieval from knowledge brain ---
+  const selfKnowledgePatterns = [
+    /how (do|can|to) (i|you|amo|we)/i,
+    /can (you|amo)/i,
+    /what (can|does|do) (you|amo)/i,
+    /how (does|do) .*(work|use|open|run|access)/i,
+    /show me how/i,
+    /what is the .*(editor|terminal|webview|browser|voice|chat|knowledge|memory|brain)/i,
+    /\b(feature|guide|help|tutorial|how to)\b/i,
+    /how.*(terminal|webview|editor|code editor|voice|chat|browser|settings|knowledge|memory)/i,
+    /how.*(import|upload|download|attach)/i,
+    /what.*(feature|capability|tool)/i,
+    /list.*(feature|tool|capability)/i,
+  ];
+
+  const isSelfKnowledgeQuery = selfKnowledgePatterns.some(p => p.test(lowered));
+
   // --- 1. Small Talk & Greetings ---
   const greetKeywords = ['hi', 'hey', 'hello', 'kia ora', 'kiaora', 'yo', 'sup', 'morning', 'afternoon', 'evening', 'chur', 'bro', 'cuz', 'g', 'how are you', 'how u', 'hows it', 'howsit', 'howsit going', 'how is it'];
   const greetWords = lowered.split(/\W+/).filter(Boolean);
@@ -116,18 +134,20 @@ export function routeUserIntent(rawInput: string): IntentRouteResult {
 
   const identityKeywords = ['who are you', 'what are you', 'introduce yourself', 'tell me about yourself', 'who is amo', 'what is amo'];
   if (scoreIntent(lowered, identityKeywords) >= 1) {
+    // Force retrieval from self-knowledge for identity questions
     return {
       canonicalInput,
-      instantReply: "I'm Amo, a male assistant from New Zealand Aotearoa. I'm here to help you with chat, documents, and offline tools.",
+      forceRetrieval: true,
     };
   }
 
   // --- 2. Capabilities & Help ---
   const helpKeywords = ['help', 'do', 'can', 'offline', 'capability', 'capabilities', 'how', 'assist'];
   if (scoreIntent(lowered, helpKeywords) >= 2 && !lowered.includes('knowledge')) {
+    // Force retrieval for capability questions to get detailed answer from self-knowledge
     return {
       canonicalInput,
-      instantReply: 'I can chat, speak, show offline status, show workspace status, and work with imported knowledge on this device.',
+      forceRetrieval: true,
     };
   }
 
@@ -220,6 +240,14 @@ export function routeUserIntent(rawInput: string): IntentRouteResult {
     return {
       canonicalInput,
       instantReply: "You're welcome.",
+    };
+  }
+
+  // --- Fallback: Self-knowledge query detected but not handled above ---
+  if (isSelfKnowledgeQuery) {
+    return {
+      canonicalInput,
+      forceRetrieval: true,
     };
   }
 
