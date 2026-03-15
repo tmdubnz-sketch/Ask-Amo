@@ -136,12 +136,17 @@ export class KnowledgeStoreService {
 
     if (Capacitor.isNativePlatform()) {
       // On native Android, use file-based SQLite - persists across cache clears
+      // Using relative path with 'c' (create) and 't' (truncate=open existing or create new)
+      console.log('[KnowledgeStore] Initializing SQLite on native platform...');
       this.db = new sqlite.oo1.DB('amo-knowledge.sqlite3', 'ct');
+      console.log('[KnowledgeStore] SQLite DB opened: amo-knowledge.sqlite3');
     } else if (sqlite.oo1.JsStorageDb && isBrowser()) {
       // On web browser, use localStorage-backed SQLite
+      console.log('[KnowledgeStore] Using localStorage-backed SQLite (browser)');
       this.db = new sqlite.oo1.JsStorageDb('amo-knowledge-store');
     } else {
       // Fallback to file-based
+      console.log('[KnowledgeStore] Using fallback file-based SQLite');
       this.db = new sqlite.oo1.DB('/amo-knowledge.sqlite3', 'ct');
     }
 
@@ -713,11 +718,12 @@ export class KnowledgeStoreService {
         now,
       ],
     });
+    console.log('[KnowledgeStore] upsertConversationMemory done for:', record.scope);
   }
 
   async listConversationMemory(scope: string): Promise<ConversationMemoryRow[]> {
     await this.init();
-    return this.db!.selectObjects<ConversationMemoryRow>(
+    const results = this.db!.selectObjects<ConversationMemoryRow>(
       `
         SELECT id, scope, memory_type, title, content, tags_json, weight, created_at, updated_at
         FROM conversation_memory
@@ -726,6 +732,8 @@ export class KnowledgeStoreService {
       `,
       [scope]
     );
+    console.log('[KnowledgeStore] listConversationMemory for', scope, ':', results.length, 'rows');
+    return results;
   }
 
   async updateConversationMemory(record: {
