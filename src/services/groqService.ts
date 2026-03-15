@@ -29,8 +29,8 @@ export class GroqService {
       model: modelId,
       messages: [systemMessage, ...normalizeChatMessages(messages)],
       stream: true,
-      temperature: deepThink ? 0.2 : 0.3,
-      max_tokens: deepThink ? 640 : 256,
+      temperature: deepThink ? 0.2 : 0.4,
+      max_tokens: deepThink ? 768 : 384,
     };
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {

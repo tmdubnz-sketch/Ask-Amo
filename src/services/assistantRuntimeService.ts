@@ -70,20 +70,21 @@ function buildRecentTurns(messages: RuntimeMessage[], limit = 4): string {
 
 function buildOperationalGuidance(intent: string): string {
   const lines = [
-    'Amo operating rules:',
-    '- Prefer local memory, imported knowledge, and device tools before using live web.',
-    '- Give an immediate direct answer first whenever possible so the user does not wait.',
-    '- If a word is unfamiliar or the sentence structure is strange, say so plainly and ask for clarification.',
-    '- Use phrases like "that did not make sense", "sorry can you repeat that?", or "did you mean ...?" when needed.',
-    '- If the user likely meant a nearby known word, offer the closest clear suggestion.',
-    '- If the request becomes a multi-step job, switch into task mode and prefer terminal and webview tools.',
-    '- Use live web assist only when the answer is missing locally, unclear, or needs fresh external information.',
+    'You are Amo — a grounded, practical, honest AI assistant with a calm NZ voice.',
+    'You are direct and clear. You never pad responses. You never make things up.',
+    'If something is unclear, ask one short clarifying question.',
+    'Prefer local knowledge and memory before using live web.',
+    'Give an immediate direct answer first whenever possible.',
+    'Use plain language. Avoid jargon unless the user uses it first.',
   ];
 
-  if (intent === 'instruction' || intent === 'idea' || intent === 'task') {
-    lines.push('- Task mode: break work into short steps, use terminal for execution, and verify results before moving on.');
-    lines.push('- Look for action verbs and direct objects in the user request so you understand what to operate on.');
-    lines.push('- Common intent phrases include can you, do you, is there, how to, run, open, search, edit, find, scan, code, listen, and watch.');
+  if (intent === 'task' || intent === 'instruction') {
+    lines.push('Break complex tasks into numbered steps. Verify results before moving on.');
+    lines.push('Prefer terminal for execution tasks, WebView for research and browsing.');
+  }
+
+  if (intent === 'question') {
+    lines.push('Answer the question directly first, then add context if genuinely useful.');
   }
 
   return lines.join('\n');
@@ -106,11 +107,11 @@ export const assistantRuntimeService = {
     const truncatedWebContext = options.webContext ? options.webContext.slice(0, 800).trim() : '';
 
     // Search core knowledge for the native offline model
-    const knowledgeResults = await vectorDbService.search(options.userInput, 4);
+    const knowledgeResults = await vectorDbService.search(options.userInput, 5);
     const knowledgeContext = knowledgeResults.length > 0
       ? knowledgeResults.map((result) => result.content).join('\n\n')
       : '';
-    const combinedContext = [buildOperationalGuidance(detectIntent(options.userInput, options.messages)), memoryContext, knowledgeContext, truncatedWebContext]
+    const combinedContext = [buildOperationalGuidance(detectIntent(options.userInput, options.messages)), knowledgeContext, memoryContext, truncatedWebContext]
       .filter(Boolean)
       .join('\n\n');
 
@@ -133,14 +134,14 @@ export const assistantRuntimeService = {
   }): Promise<AssistantContextBundle> {
     const [memoryContext, knowledgeResults] = await Promise.all([
       amoBrainService.buildFastContext(options.scope, options.userInput),
-      options.includeKnowledge ? vectorDbService.search(options.userInput) : Promise.resolve([]),
+      options.includeKnowledge ? vectorDbService.search(options.userInput, 8) : Promise.resolve([]),
     ]);
 
     const knowledgeContext = knowledgeResults.length > 0
       ? knowledgeResults.map((result) => result.content).join('\n\n')
       : '';
     const intent = detectIntent(options.userInput, options.messages);
-    const combinedContext = [buildOperationalGuidance(intent), memoryContext, knowledgeContext, options.webContext || '']
+    const combinedContext = [buildOperationalGuidance(intent), knowledgeContext, memoryContext, options.webContext || '']
       .filter(Boolean)
       .join('\n\n')
       .trim();
@@ -160,18 +161,25 @@ export const assistantRuntimeService = {
     contextBundle: AssistantContextBundle;
   }): string {
     const compactUser = trimText(options.userInput.replace(/\s+/g, ' ').trim(), 400);
-    const compactTurns = trimText(options.contextBundle.recentTurns.replace(/\s+/g, ' ').trim(), 80);
+    const compactTurns = trimText(options.contextBundle.recentTurns.replace(/\s+/g, ' ').trim(), 320);
+    const compactContext = trimText(options.contextBundle.combinedContext.replace(/\s+/g, ' ').trim(), 600);
+
     const promptParts = [
-      'You are Amo.',
-      'Reply naturally in one short sentence.',
+      'You are Amo, a grounded, practical AI assistant with a calm NZ voice.',
+      'You are honest, direct, and helpful. You prefer short clear answers but use as many sentences as needed.',
+      'You never make things up. If you do not know, say so plainly.',
     ];
 
+    if (compactContext) {
+      promptParts.push(`Context:\n${compactContext}`);
+    }
+
     if (compactTurns) {
-      promptParts.push(`Recent: ${compactTurns}`);
+      promptParts.push(`Recent conversation:\n${compactTurns}`);
     }
 
     promptParts.push(`User: ${compactUser}`);
     promptParts.push('Amo:');
-    return promptParts.join('\n');
+    return promptParts.join('\n\n');
   },
 };

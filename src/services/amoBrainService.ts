@@ -6,6 +6,11 @@ import {
   type ToolRegistryRow,
 } from './knowledgeStoreService';
 
+function trimText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength).trim() + '...';
+}
+
 function createId(prefix: string): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -96,46 +101,50 @@ export const amoBrainService = {
       scope === appScope ? Promise.resolve([]) : knowledgeStoreService.listMemorySummaries(appScope),
       knowledgeStoreService.listSeedPacks(),
     ]);
+
     const memories = [...scopeMemories, ...appMemories];
     const summaries = [...scopeSummaries, ...appSummaries];
-
     const normalizedQuery = query.toLowerCase();
+    const queryTerms = normalizedQuery.split(/\s+/).filter(t => t.length > 2);
 
-    const matchedMemories = memories
-      .filter((memory) => {
-        const haystack = `${memory.title} ${memory.content} ${memory.tags_json}`.toLowerCase();
-        return haystack.includes(normalizedQuery) || normalizedQuery.split(/\s+/).some((term) => term.length > 2 && haystack.includes(term));
-      })
-      .slice(0, 3);
+    // Score memories by relevance, fall back to recency
+    const scoredMemories = memories.map(memory => {
+      const haystack = `${memory.title} ${memory.content} ${memory.tags_json}`.toLowerCase();
+      const score = queryTerms.filter(term => haystack.includes(term)).length;
+      return { memory, score };
+    }).sort((a, b) => b.score - a.score || b.memory.weight - a.memory.weight);
 
-    const matchedSummaries = summaries
-      .filter((summary) => {
-        const haystack = `${summary.summary} ${summary.keywords_json}`.toLowerCase();
-        return haystack.includes(normalizedQuery) || normalizedQuery.split(/\s+/).some((term) => term.length > 2 && haystack.includes(term));
-      })
-      .slice(0, 2);
+    const scoredSummaries = summaries.map(summary => {
+      const haystack = `${summary.summary} ${summary.keywords_json}`.toLowerCase();
+      const score = queryTerms.filter(term => haystack.includes(term)).length;
+      return { summary, score };
+    }).sort((a, b) => b.score - a.score);
 
-    const activePacks = packs.slice(0, 2);
+    // Always take top results regardless of score — never return empty
+    const topMemories = scoredMemories.slice(0, 4).map(s => s.memory);
+    const topSummaries = scoredSummaries.slice(0, 3).map(s => s.summary);
+    const activePacks = packs.slice(0, 3);
+
     const lines: string[] = [];
 
-    if (matchedMemories.length > 0) {
-      lines.push('Remembered user context:');
-      for (const memory of matchedMemories) {
-        lines.push(`- ${memory.title}: ${memory.content}`);
+    if (topMemories.length > 0) {
+      lines.push('Remembered context:');
+      for (const memory of topMemories) {
+        lines.push(`- ${memory.title}: ${trimText(memory.content, 120)}`);
       }
     }
 
-    if (matchedSummaries.length > 0) {
-      lines.push('Recent conversation summary:');
-      for (const summary of matchedSummaries) {
-        lines.push(`- ${summary.summary}`);
+    if (topSummaries.length > 0) {
+      lines.push('Conversation history:');
+      for (const summary of topSummaries) {
+        lines.push(`- ${trimText(summary.summary, 100)}`);
       }
     }
 
     if (activePacks.length > 0) {
-      lines.push('Response guidance:');
+      lines.push('Guidance:');
       for (const pack of activePacks) {
-        lines.push(`- ${pack.pack_name}: ${pack.description}`);
+        lines.push(`- ${pack.pack_name}: ${trimText(pack.description, 80)}`);
       }
     }
 
