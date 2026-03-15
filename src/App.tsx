@@ -53,6 +53,7 @@ import { vectorDbService } from './services/vectorDbService';
 import { webSearchService, shouldUseWebSearch } from './services/webSearchService';
 import { assistantRuntimeService } from './services/assistantRuntimeService';
 import { knowledgeBootstrapService } from './services/knowledgeBootstrapService';
+import { knowledgeStoreService } from './services/knowledgeStoreService';
 import { normalizeTranscriptText, routeUserIntent } from './services/intentRouterService';
 import { nativeChatSessionService } from './services/nativeChatSessionService';
 import { nativeReplyCoordinator, buildDeterministicReply } from './services/nativeReplyCoordinator';
@@ -551,6 +552,7 @@ export default function App() {
     if (!hasBootstrapped) {
       void (async () => {
         try {
+          await knowledgeStoreService.init();
           await knowledgeBootstrapService.bootstrapAmoBrain();
           localStorage.setItem('amo_brain_bootstrapped_v3', 'true');
           await syncUploadedDocsFromStorage();
@@ -933,20 +935,25 @@ export default function App() {
     void refreshNativeDownloadAuthStatus();
   }, [isSettingsOpen]);
 
-  const persistExchangeToBrain = (userContent: string, assistantContent: string) => {
+  const persistExchangeToBrain = async (userContent: string, assistantContent: string): Promise<void> => {
     const scope = `chat:${currentChatId}`;
     const appScope = 'app:ask-amo';
     const title = trimForNativePrompt(userContent.replace(/\s+/g, ' ').trim(), 72) || 'Chat exchange';
     const summary = buildConversationSummary(userContent, assistantContent);
 
-    void Promise.all([
-      amoBrainService.remember(scope, title, summary, ['chat', 'exchange', 'local-first'], 1),
-      amoBrainService.remember(appScope, title, summary, ['app', 'exchange', 'ask-amo'], 1),
-      amoBrainService.summarize(scope, 'conversation', currentChatId, summary, ['chat', 'amo', 'exchange']),
-      amoBrainService.summarize(appScope, 'conversation', currentChatId, summary, ['app', 'amo', 'exchange']),
-    ]).catch((brainError) => {
-      console.error('[AskAmo] Failed to persist exchange to brain', brainError);
-    });
+    try {
+      await Promise.all([
+        amoBrainService.remember(scope, title, summary, ['chat', 'exchange', 'local-first'], 1),
+        amoBrainService.remember(appScope, title, summary, ['app', 'exchange', 'ask-amo'], 1),
+        amoBrainService.summarize(scope, 'conversation', currentChatId, summary, ['chat', 'amo', 'exchange']),
+        amoBrainService.summarize(appScope, 'conversation', currentChatId, summary, ['app', 'amo', 'exchange']),
+      ]);
+
+      await refreshBrainState();
+    } catch (brainError) {
+      console.error('[AskAmo] Failed to persist exchange to brain:', brainError);
+      setDownloadStatus(`Brain write failed: ${brainError instanceof Error ? brainError.message : 'unknown error'}`);
+    }
   };
 
   const resolveOfflineCommandReply = (command: string): string | null => {
@@ -1057,9 +1064,9 @@ export default function App() {
        const assistantId = addStreamingMessage('assistant');
        activeAssistantMessageIdRef.current = assistantId;
        updateMessage(assistantId, routedIntent.instantReply, false);
-       finalizeMessage(assistantId);
-       persistExchangeToBrain(userPrompt, routedIntent.instantReply);
-       if (isVoiceModeRef.current) speak(routedIntent.instantReply);
+        finalizeMessage(assistantId);
+        await persistExchangeToBrain(userPrompt, routedIntent.instantReply);
+        if (isVoiceModeRef.current) speak(routedIntent.instantReply);
        setIsLoading(false);
        setAmoRuntimeState('waiting');
        return;
@@ -1071,10 +1078,10 @@ export default function App() {
          addMessage('user', userPrompt, pendingImage || undefined);
          const assistantId = addStreamingMessage('assistant');
          activeAssistantMessageIdRef.current = assistantId;
-         updateMessage(assistantId, offlineReply, false);
-         finalizeMessage(assistantId);
-         persistExchangeToBrain(userPrompt, offlineReply);
-         setIsLoading(false);
+          updateMessage(assistantId, offlineReply, false);
+          finalizeMessage(assistantId);
+          await persistExchangeToBrain(userPrompt, offlineReply);
+          setIsLoading(false);
          setAmoRuntimeState('waiting');
          return;
        }
@@ -1089,25 +1096,25 @@ export default function App() {
         if (autoAction.webUrl) {
           setWebViewUrl(autoAction.webUrl);
        }
-       updateMessage(assistantId, autoAction.reply, false);
-       finalizeMessage(assistantId);
-       persistExchangeToBrain(userPrompt, autoAction.reply);
-       if (isVoiceModeRef.current) speak(autoAction.reply);
-       setIsLoading(false);
-       setAmoRuntimeState('waiting');
-       return;
-     }
-      
+        updateMessage(assistantId, autoAction.reply, false);
+        finalizeMessage(assistantId);
+        await persistExchangeToBrain(userPrompt, autoAction.reply);
+        if (isVoiceModeRef.current) speak(autoAction.reply);
+        setIsLoading(false);
+        setAmoRuntimeState('waiting');
+        return;
+      }
+       
       // Check for deterministic replies first to avoid unnecessary processing
       const deterministicReply = buildDeterministicReply(userPrompt);
       if (deterministicReply !== null) {
        addMessage('user', userPrompt, pendingImage || undefined);
        const assistantId = addStreamingMessage('assistant');
        activeAssistantMessageIdRef.current = assistantId;
-       updateMessage(assistantId, deterministicReply, false);
-        finalizeMessage(assistantId);
-        persistExchangeToBrain(userPrompt, deterministicReply);
-        if (isVoiceModeRef.current) speak(deterministicReply);
+        updateMessage(assistantId, deterministicReply, false);
+         finalizeMessage(assistantId);
+         await persistExchangeToBrain(userPrompt, deterministicReply);
+         if (isVoiceModeRef.current) speak(deterministicReply);
         setIsLoading(false);
         setAmoRuntimeState('waiting');
        return;
@@ -1206,10 +1213,10 @@ export default function App() {
              return;
            }
 
-           updateMessage(assistantId, reply, false);
-           finalizeMessage(assistantId);
-          persistExchangeToBrain(userPrompt, reply);
-          if (isVoiceModeRef.current) speak(reply);
+            updateMessage(assistantId, reply, false);
+            finalizeMessage(assistantId);
+           await persistExchangeToBrain(userPrompt, reply);
+           if (isVoiceModeRef.current) speak(reply);
         });
       } catch (e: any) {
         setError(getErrorMessage(e, 'Failed.'));
