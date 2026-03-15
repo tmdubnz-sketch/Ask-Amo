@@ -495,7 +495,7 @@ export default function App() {
   
   const [nativeOfflineStatus, setNativeOfflineStatus] = useState<NativeOfflineStatus | null>(null);
   const [nativeTtsStatus, setNativeTtsStatus] = useState<NativeTtsStatus | null>(null);
-  const [nativePiperStatus, setNativePiperStatus] = useState<NativePiperVoiceStatus | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [loadedModelId, setLoadedModelId] = useState<string | null>(null);
   const [downloadStatus, setDownloadStatus] = useState('');
    const [error, setError] = useState<string | null>(null);
@@ -1269,7 +1269,25 @@ export default function App() {
       audioCaptureService.stop();
       setIsListening(false);
     } else {
-      setIsListening(true);
+      audioCaptureService.onSpeechStart = () => {
+        setIsListening(true);
+      };
+      audioCaptureService.onSpeechStop = async (audioBlob: Blob) => {
+        setIsListening(false);
+        setIsTranscribing(true);
+        try {
+          const text = await groqService.transcribe(audioBlob);
+          if (text.trim()) {
+            setInput((prev) => prev + (prev ? ' ' : '') + text);
+            inputRef.current = inputRef.current + (inputRef.current ? ' ' : '') + text;
+            textareaRef.current?.focus();
+          }
+        } catch (err) {
+          console.error('[Voice] Transcription failed:', err);
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
       await audioCaptureService.start();
     }
   };
@@ -1510,11 +1528,11 @@ export default function App() {
                 <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*,video/*,audio/*,.pdf,.txt,.md" className="hidden" />
                 <div className="relative flex-1 flex items-stretch">
                   <textarea ref={textareaRef} value={input} onChange={handleInput} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="Chat with Amo..." className="w-full glass-panel border border-white/5 rounded-[1.75rem] px-6 py-[18px] pr-28 text-[15px] focus:outline-none focus:border-[#ff4e00]/50 resize-none min-h-[60px] h-[60px] shadow-2xl transition-all" rows={1} />
-                   <div className="absolute right-14 top-1/2 -translate-y-1/2">
-                     <button onClick={toggleListening} className={cn("w-10 h-10 rounded-full flex items-center justify-center transition-all", isListening ? "bg-red-500/20 text-red-500" : "text-white/20 hover:text-white/80")}>
-                       {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                     </button>
-                   </div>
+<div className="absolute right-14 top-1/2 -translate-y-1/2">
+                      <button onClick={toggleListening} disabled={isTranscribing} className={cn("w-10 h-10 rounded-full flex items-center justify-center transition-all", isListening ? "bg-red-500/20 text-red-500" : isTranscribing ? "bg-amber-500/20 text-amber-500" : "text-white/20 hover:text-white/80")}>
+                        {isListening ? <MicOff className="w-5 h-5" /> : isTranscribing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
+                      </button>
+                    </div>
                     <button onClick={isLoading ? handleCancelThinking : handleSend} disabled={!isLoading && !input.trim()} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-gradient-to-br from-orange-500 to-[#ff4e00] text-white flex items-center justify-center hover:opacity-90 disabled:opacity-30 transition-all shadow-lg">{isLoading ? <X className="w-5 h-5" /> : <Send className="w-4 h-4 ml-0.5" />}</button>
                  </div>
                </div>
