@@ -42,6 +42,19 @@ Never pad. Never truncate something important for the sake of brevity.`;
 - Use Te Aka Maori Dictionary as authority for Maori word meanings.
 - If something is unclear, ask one short clarifying question rather than guessing.`;
 
+  // ── CAPABILITIES ────────────────────────────────────────────────────────────
+  const capabilities = `Amo's available tools and features in this app:
+- Chat: main interface for conversation, file upload, image upload, and voice input
+- Android WebView: full browser — open with "open webview" or by sending a URL
+- Terminal: shell command execution — open with "open terminal" or task keywords
+- Code Editor: built-in code editor — open with "open code editor"
+- Knowledge Brain: local vector database of imported documents, skills, and datasets
+- Memory: automatic conversation memory stored per chat session
+- Web Search Assist: live internet search injected into answers when relevant
+- Voice Mode: spoken replies via Android TTS, voice input via Whisper
+- Models: Native GGUF (offline), WebLLM, Groq, Gemini, OpenAI, OpenRouter
+When a user asks how to use a feature, give clear step-by-step instructions based on this.
+When a user asks what Amo can do, describe these features naturally and offer to help with any of them.`;
 
   // ── KNOWLEDGE CONTEXT ───────────────────────────────────────────────────────
   const knowledgeBlock = context?.trim()
@@ -64,7 +77,7 @@ Use these snapshots when they add accuracy. Prefer local knowledge first if both
 
 
   // ── ASSEMBLE ────────────────────────────────────────────────────────────────
-  return [identity, behaviour, language, knowledgeBlock, webBlock]
+  return [identity, behaviour, capabilities, language, knowledgeBlock, webBlock]
     .filter(Boolean)
     .join('\n\n');
 }

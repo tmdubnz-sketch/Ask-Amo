@@ -1,7 +1,30 @@
 import { AMO_STARTER_PACKS } from '../data/amoStarterPacks';
 import { CURATED_KNOWLEDGE_PACKS } from '../data/curatedKnowledge';
+import { AMO_SELF_KNOWLEDGE } from '../data/amoSelfKnowledge';
 import { vectorDbService } from './vectorDbService';
 import { knowledgeStoreService } from './knowledgeStoreService';
+
+async function bootstrapSelfKnowledge(): Promise<void> {
+  const existingDocs = await knowledgeStoreService.listDocuments();
+  
+  for (const chunk of AMO_SELF_KNOWLEDGE) {
+    const existingDoc = existingDocs.find(doc => doc.document_id === chunk.id);
+    if (existingDoc) continue;
+
+    await vectorDbService.addDocument({
+      id: chunk.id,
+      documentId: chunk.id,
+      documentName: chunk.title,
+      content: `${chunk.title}\nTags: ${chunk.tags.join(', ')}\n\n${chunk.content}`,
+      metadata: {
+        assetKind: 'skill',
+        source: 'system',
+        isSelfKnowledge: true,
+      },
+    });
+    console.info(`[AskAmo] Bootstrapped self-knowledge: ${chunk.title}`);
+  }
+}
 
 export const knowledgeBootstrapService = {
   /**
@@ -10,6 +33,9 @@ export const knowledgeBootstrapService = {
    */
   async bootstrapAmoBrain() {
     await vectorDbService.init();
+    
+    // First, load Amo's self-knowledge
+    await bootstrapSelfKnowledge();
     
     // Get currently installed documents
     const existingDocs = await knowledgeStoreService.listDocuments();
