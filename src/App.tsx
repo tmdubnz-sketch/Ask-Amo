@@ -1543,13 +1543,6 @@ export default function App() {
       audioCaptureService.stop();
       setIsListening(false);
     } else {
-      setIsListening(true);
-      await audioCaptureService.start();
-    }
-  };
-
-  useEffect(() => {
-    if (isListening) {
       audioCaptureService.setCallbacks(
         (text: string, isFinal: boolean) => {
           if (!isFinal) {
@@ -1584,18 +1577,16 @@ export default function App() {
           setIsListening(false);
         }
       );
-    } else {
-      audioCaptureService.setCallbacks(() => {}, () => {});
+      setIsListening(true);
+      await audioCaptureService.start();
     }
-    return () => {
-      audioCaptureService.setCallbacks(() => {}, () => {});
-    };
-  }, [isListening, voiceContinuous]);
+  };
 
   useEffect(() => {
     if (!isLoading && voiceContinuous && !isListening) {
       const timer = setTimeout(() => {
         setIsListening(true);
+        void audioCaptureService.start();
       }, 600);
       return () => clearTimeout(timer);
     }
