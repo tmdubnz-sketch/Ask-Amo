@@ -1470,6 +1470,8 @@ export default function App() {
           onRunCommand={handleRunQuickCommand}
           onSaveCurrentPage={handleSaveCurrentPage}
           selectedModelId={selectedModel.id}
+          availableModels={AVAILABLE_MODELS}
+          onSelectModel={(id) => { const model = AVAILABLE_MODELS.find(m => m.id === id); if (model) setSelectedModel(model); }}
           nativeModelStatus={localRuntimeState.capability}
           nativeModelName={nativeOfflineStatus?.activeModel?.displayName || 'No model loaded'}
           hasGroqKey={hasGroqApiKey}

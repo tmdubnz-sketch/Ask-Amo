@@ -72,6 +72,8 @@ interface SidebarProps {
   onRunCommand: (cmd: string) => void;
   onSaveCurrentPage: () => void;
   selectedModelId: string;
+  availableModels: Array<{ id: string; name: string; description: string; family: string; isCloud?: boolean }>;
+  onSelectModel: (modelId: string) => void;
   nativeModelStatus: string;
   nativeModelName: string;
   hasGroqKey: boolean;
@@ -349,6 +351,26 @@ function ModelsPanel(props: SidebarProps) {
             </button>
           </div>
           <div className="mt-2 text-[9px] text-white/25 leading-relaxed">Recommended: Phi-3.5 Mini 3.8B Q4_K_M for Snapdragon 865</div>
+        </div>
+        <SectionLabel>Active model</SectionLabel>
+        <div className="mb-3">
+          <select
+            value={props.selectedModelId}
+            onChange={(e) => props.onSelectModel(e.target.value)}
+            className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-[#ff4e00]/50 cursor-pointer"
+          >
+            {props.availableModels.map((model) => {
+              const isDisabled = model.isCloud && !((model.family === 'groq' && props.hasGroqKey) || (model.family === 'gemini' && props.hasGeminiKey) || (model.family === 'openai' && props.hasOpenAiKey) || (model.family === 'openrouter' && props.hasOpenRouterKey));
+              return (
+                <option key={model.id} value={model.id} disabled={isDisabled}>
+                  {model.name} {model.isCloud ? '(cloud)' : '(offline)'}
+                </option>
+              );
+            })}
+          </select>
+          <div className="text-[9px] text-white/30 mt-1.5 ml-1">
+            {props.availableModels.find(m => m.id === props.selectedModelId)?.description}
+          </div>
         </div>
         <SectionLabel>Cloud providers</SectionLabel>
         <div className="space-y-2">
