@@ -7,6 +7,17 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <cstdio>  // for printf
+
+// Temporary compatibility defines for older llama.cpp versions
+static const int kMaxContextTokens = 8192;
+static const int kReservedGenerationTokens = 256;
+static const int kTokenPieceBufferSize = 128;
+
+// Stub log_debug if missing
+#ifndef log_debug
+#define log_debug(...) printf("[DEBUG] " __VA_ARGS__ "\n")
+#endif
 
 #ifndef LLAMA_CPP_VENDOR_READY
 #define LLAMA_CPP_VENDOR_READY 0
