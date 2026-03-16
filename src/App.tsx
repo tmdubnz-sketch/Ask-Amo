@@ -161,8 +161,13 @@ const PREFERRED_NATIVE_MODEL_PATTERNS = [
 const RECOMMENDED_NATIVE_DOWNLOADS = [
   {
     label: 'Phi-3.5 Mini 3.8B Q4_K_M',
-    description: 'Best for Snapdragon 865',
+    description: 'Best for Snapdragon 865 - text only',
     url: 'https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf?download=true',
+  },
+  {
+    label: 'Qwen2-VL 2B Vision Q4_K_M',
+    description: 'Local vision model - sees images',
+    url: 'https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/Qwen2-VL-2B-Instruct-Q4_K_M.gguf?download=true',
   },
   {
     label: 'Llama 3.2 3B Q4_K_M',
@@ -1177,17 +1182,24 @@ export default function App({ ready = true }: AppProps) {
        userPrompt = contextResult.enhancedPrompt;
      }
      
-      const pendingImage = selectedImage;
-      
-      // Auto-switch to vision model if image is attached and current model doesn't support vision
-      if (pendingImage && !selectedModel.isVision) {
-        // Prefer Gemini for vision (supports multimodal), fallback to Groq if available
-        const visionModel = AVAILABLE_MODELS.find(m => m.isVision && m.family === 'gemini') 
-          || AVAILABLE_MODELS.find(m => m.isVision && m.isCloud);
-        if (visionModel) {
-          setSelectedModel(visionModel);
-        }
-      }
+     const pendingImage = selectedImage;
+       
+       // Auto-switch to vision model if image is attached and current model doesn't support vision
+       if (pendingImage && !selectedModel.isVision) {
+         // Prefer Gemini for vision (supports multimodal), fallback to cloud if available
+         const visionModel = AVAILABLE_MODELS.find(m => m.isVision && m.family === 'gemini') 
+           || AVAILABLE_MODELS.find(m => m.isVision && m.isCloud);
+         if (visionModel) {
+           setSelectedModel(visionModel);
+         }
+       }
+       
+       // For native vision models, embed image in prompt
+       let visionPromptSuffix = '';
+       if (pendingImage && selectedModel.family === 'native' && selectedModel.isVision) {
+         // Format for llama.cpp vision: embed base64 image in prompt
+         visionPromptSuffix = `\n\n<image>${pendingImage}</image>`;
+       }
      
      const requestId = activeRequestIdRef.current + 1;
      activeRequestIdRef.current = requestId;
@@ -1406,24 +1418,25 @@ export default function App({ ready = true }: AppProps) {
               default:
                throw new Error(`Unsupported cloud model family: ${runtimeModel.family}`);
            }
-         } else {
-            const result = await nativeReplyCoordinator.generateAndCommit({
-             chatId: currentChatId,
-             userInput: userPrompt,
-             knowledgeContext: bundle.knowledgeContext,
-             webContext: webSearchContext,
-             ensureReady: ensureNativeOfflineReady,
-             generate: p => nativeOfflineLlmService.generate({ prompt: p }),
-             onStatus: setNativeOfflineStatus,
-             onRuntimeState: setAmoRuntimeState,
-              onCommit: t => {
-                if (isRequestCanceled(requestId)) return;
-                updateMessage(assistantId, t, false);
-                finalizeMessage(assistantId);
-              }
-            });
-            reply = result.text;
-           }
+          } else {
+             const finalPrompt = userPrompt + (visionPromptSuffix || '');
+             const result = await nativeReplyCoordinator.generateAndCommit({
+              chatId: currentChatId,
+              userInput: finalPrompt,
+              knowledgeContext: bundle.knowledgeContext,
+              webContext: webSearchContext,
+              ensureReady: ensureNativeOfflineReady,
+              generate: p => nativeOfflineLlmService.generate({ prompt: p }),
+              onStatus: setNativeOfflineStatus,
+              onRuntimeState: setAmoRuntimeState,
+               onCommit: t => {
+                 if (isRequestCanceled(requestId)) return;
+                 updateMessage(assistantId, t, false);
+                 finalizeMessage(assistantId);
+               }
+             });
+             reply = result.text;
+            }
 
            if (isRequestCanceled(requestId)) {
              return;

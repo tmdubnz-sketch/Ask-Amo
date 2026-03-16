@@ -82,6 +82,15 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
     isCloud: true
   },
   {
+    id: "amo-native-vision",
+    name: "Native Vision",
+    description: "Qwen2-VL 2B - local vision model. Requires mmproj file. Processes images offline.",
+    size: "2.5GB",
+    family: 'native',
+    isCloud: false,
+    isVision: true
+  },
+  {
     id: "amo-native-offline",
     name: "Native offline",
     description: "Phi-3.5 Mini 3.8B Q4_K_M — best fit for Snapdragon 865. Strong reasoning, instruction following, and code. Runs fully offline with no internet needed.",

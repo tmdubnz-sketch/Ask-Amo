@@ -5,6 +5,8 @@ export interface NativeOfflineModelInfo {
   displayName: string;
   templateHint?: string;
   sizeBytes?: number;
+  isVision?: boolean;
+  mmprojPath?: string;
 }
 
 export interface NativeOfflinePickedModel {
