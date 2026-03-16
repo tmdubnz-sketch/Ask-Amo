@@ -134,8 +134,19 @@ Use these snapshots when they add accuracy. Prefer local knowledge first if both
 }
 
 export function normalizeChatMessages(messages: AssistantMessage[]) {
-  return messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
+  return messages.map((message) => {
+    if (message.image) {
+      return {
+        role: message.role,
+        content: [
+          { type: 'text', text: message.content },
+          { type: 'image_url', image_url: { url: message.image } },
+        ],
+      };
+    }
+    return {
+      role: message.role,
+      content: message.content,
+    };
+  });
 }

@@ -25,6 +25,15 @@ export interface ModelConfig {
 
 export const AVAILABLE_MODELS: ModelConfig[] = [
   {
+    id: "llama-3.2-90b-vision-preview",
+    name: "Amo Vision",
+    description: "Llama 3.2 90B with vision - can see and analyze images.",
+    size: "Cloud",
+    family: 'groq',
+    isCloud: true,
+    isVision: true
+  },
+  {
     id: "llama-3.3-70b-versatile",
     name: "Amo Groq",
     description: "Fast cloud model via Groq.",

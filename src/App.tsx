@@ -1169,6 +1169,15 @@ export default function App({ ready = true }: AppProps) {
      }
      
      const pendingImage = selectedImage;
+     
+     // Auto-switch to vision model if image is attached and current model doesn't support vision
+     if (pendingImage && !selectedModel.isVision) {
+       const visionModel = AVAILABLE_MODELS.find(m => m.isVision && m.isCloud);
+       if (visionModel) {
+         setSelectedModel(visionModel);
+       }
+     }
+     
      const requestId = activeRequestIdRef.current + 1;
      activeRequestIdRef.current = requestId;
      canceledRequestIdsRef.current.delete(requestId);
