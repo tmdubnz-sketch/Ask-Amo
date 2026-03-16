@@ -75,8 +75,34 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
   },
   {
     id: "mistral-large-latest",
-    name: "Amo Mistral",
-    description: "Mistral Large via Mistral API.",
+    name: "Amo Mistral Large",
+    description: "Mistral Large 3 - flagship multimodal model.",
+    size: "Cloud",
+    family: 'mistral',
+    isCloud: true,
+    isVision: true
+  },
+  {
+    id: "mistral-small-latest",
+    name: "Amo Mistral Small",
+    description: "Mistral Small 3.2 - fast open-weight model with vision.",
+    size: "Cloud",
+    family: 'mistral',
+    isCloud: true,
+    isVision: true
+  },
+  {
+    id: "ministral-3b-latest",
+    name: "Amo Ministral 3B",
+    description: "Ministral 3B - efficient edge model for low latency.",
+    size: "Cloud",
+    family: 'mistral',
+    isCloud: true
+  },
+  {
+    id: "ministral-8b-latest",
+    name: "Amo Ministral 8B",
+    description: "Ministral 8B - higher performance edge model.",
     size: "Cloud",
     family: 'mistral',
     isCloud: true
