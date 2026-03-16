@@ -1369,20 +1369,22 @@ export default function App({ ready = true }: AppProps) {
            ? await assistantRuntimeService.buildNativeContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, webContext: webSearchContext })
            : await assistantRuntimeService.buildContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, includeKnowledge: true, webContext: webSearchContext });
 
-         const nativeSelected = selectedModel.family === 'native';
-         if (nativeSelected && localRuntimeState.capability !== 'ready') {
-           try {
-             await ensureNativeOfflineReady();
-           } catch (nativeError: any) {
-             setError(getErrorMessage(nativeError, 'Select or download a GGUF before using the native runtime.'));
-             return;
-           }
-         }
+          const nativeSelected = selectedModel.family === 'native';
+          const webllmSelected = selectedModel.family === 'webllm';
+          if (nativeSelected && localRuntimeState.capability !== 'ready') {
+            try {
+              await ensureNativeOfflineReady();
+            } catch (nativeError: any) {
+              setError(getErrorMessage(nativeError, 'Select or download a GGUF before using the native runtime.'));
+              return;
+            }
+          }
 
-         if (!nativeSelected && !isSelectedModelReady) {
-           setError('The configured cloud model is not ready. Add an API key or select a different model.');
-           return;
-         }
+          // Check if model is ready - WebLLM is ready if loaded, cloud needs API key
+          if (!nativeSelected && !webllmSelected && !isSelectedModelReady) {
+            setError('The configured cloud model is not ready. Add an API key or select a different model.');
+            return;
+          }
 
          const runtimeModel = selectedModel;
 
