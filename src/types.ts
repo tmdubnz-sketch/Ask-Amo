@@ -25,18 +25,17 @@ export interface ModelConfig {
 
 export const AVAILABLE_MODELS: ModelConfig[] = [
   {
-    id: "llama-3.2-90b-vision-preview",
-    name: "Amo Vision",
-    description: "Llama 3.2 90B with vision - can see and analyze images.",
-    size: "Cloud",
-    family: 'groq',
-    isCloud: true,
-    isVision: true
-  },
-  {
-    id: "llama-3.3-70b-versatile",
+    id: "llama-3.1-70b-versatile",
     name: "Amo Groq",
     description: "Fast cloud model via Groq.",
+    size: "Cloud",
+    family: 'groq',
+    isCloud: true
+  },
+  {
+    id: "llama-3.1-8b-instant",
+    name: "Amo Groq Fast",
+    description: "Ultra-fast small model via Groq.",
     size: "Cloud",
     family: 'groq',
     isCloud: true
@@ -68,10 +67,11 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
   {
     id: "gemini-2.5-flash",
     name: "Amo Gemini",
-    description: "Direct Gemini cloud chat.",
+    description: "Direct Gemini cloud chat with vision support.",
     size: "Cloud",
     family: 'gemini',
-    isCloud: true
+    isCloud: true,
+    isVision: true
   },
   {
     id: "amo-native-offline",
