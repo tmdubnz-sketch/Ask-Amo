@@ -18,7 +18,7 @@ export interface ModelConfig {
   name: string;
   description: string;
   size: string;
-  family: 'gemma' | 'qwen' | 'groq' | 'openrouter' | 'openai' | 'gemini' | 'native';
+  family: 'gemma' | 'qwen' | 'groq' | 'openrouter' | 'openai' | 'gemini' | 'mistral' | 'native';
   isCloud?: boolean;
   isVision?: boolean;
 }
@@ -72,6 +72,14 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
     family: 'gemini',
     isCloud: true,
     isVision: true
+  },
+  {
+    id: "mistral-large-latest",
+    name: "Amo Mistral",
+    description: "Mistral Large via Mistral API.",
+    size: "Cloud",
+    family: 'mistral',
+    isCloud: true
   },
   {
     id: "amo-native-offline",

@@ -1,12 +1,13 @@
 import { secretStorageService } from './secretStorageService';
 
-export type ProviderKey = 'groq' | 'openrouter' | 'openai' | 'gemini';
+export type ProviderKey = 'groq' | 'openrouter' | 'openai' | 'gemini' | 'mistral';
 
 const STORAGE_KEYS: Record<ProviderKey, string> = {
   groq: 'amo_groq_api_key',
   openrouter: 'amo_openrouter_api_key',
   openai: 'amo_openai_api_key',
   gemini: 'amo_gemini_api_key',
+  mistral: 'amo_mistral_api_key',
 };
 
 const cache: Record<ProviderKey, string> = {
@@ -14,6 +15,7 @@ const cache: Record<ProviderKey, string> = {
   openrouter: '',
   openai: '',
   gemini: '',
+  mistral: '',
 };
 
 let initPromise: Promise<void> | null = null;

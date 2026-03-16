@@ -48,6 +48,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { groqService } from './services/groqService';
 import { openrouterService } from './services/openrouterService';
 import { openaiService } from './services/openaiService';
+import { mistralService } from './services/mistralService';
 import { geminiService } from './services/geminiService';
 import { webLlmService } from './services/webLlmService';
 import { documentService } from './services/documentService';
@@ -310,6 +311,7 @@ function hasCloudProviderKey(
     hasGeminiApiKey: boolean;
     hasOpenAiApiKey: boolean;
     hasOpenRouterApiKey: boolean;
+    hasMistralApiKey: boolean;
   }
 ): boolean {
   switch (family) {
@@ -321,6 +323,8 @@ function hasCloudProviderKey(
       return options.hasOpenAiApiKey;
     case 'openrouter':
       return options.hasOpenRouterApiKey;
+    case 'mistral':
+      return options.hasMistralApiKey;
     default:
       return false;
   }
@@ -489,12 +493,14 @@ export default function App({ ready = true }: AppProps) {
   const [openRouterApiKey, setOpenRouterApiKey] = useState(() => apiKeyStorage.get('openrouter'));
   const [openAiApiKey, setOpenAiApiKey] = useState(() => apiKeyStorage.get('openai'));
   const [geminiApiKey, setGeminiApiKey] = useState(() => apiKeyStorage.get('gemini'));
+  const [mistralApiKey, setMistralApiKey] = useState(() => apiKeyStorage.get('mistral'));
   const [areApiKeysHydrated, setAreApiKeysHydrated] = useState(() => apiKeyStorage.isHydrated());
-  const [visibleApiKeys, setVisibleApiKeys] = useState<Record<'groq' | 'openrouter' | 'openai' | 'gemini', boolean>>({
+  const [visibleApiKeys, setVisibleApiKeys] = useState<Record<'groq' | 'openrouter' | 'openai' | 'gemini' | 'mistral', boolean>>({
     groq: false,
     openrouter: false,
     openai: false,
     gemini: false,
+    mistral: false,
   });
   
   const [isVoiceMode, setIsVoiceMode] = useState(() => {
@@ -555,6 +561,7 @@ export default function App({ ready = true }: AppProps) {
       setOpenRouterApiKey(keys.openrouter);
       setOpenAiApiKey(keys.openai);
       setGeminiApiKey(keys.gemini);
+      setMistralApiKey(keys.mistral);
       setAreApiKeysHydrated(true);
     });
     return () => { cancelled = true; };
@@ -564,6 +571,7 @@ export default function App({ ready = true }: AppProps) {
   useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('openrouter', openRouterApiKey); }, [areApiKeysHydrated, openRouterApiKey]);
   useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('openai', openAiApiKey); }, [areApiKeysHydrated, openAiApiKey]);
   useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('gemini', geminiApiKey); }, [areApiKeysHydrated, geminiApiKey]);
+  useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('mistral', mistralApiKey); }, [areApiKeysHydrated, mistralApiKey]);
 
   useEffect(() => {
     if (!ready) return;
@@ -891,6 +899,7 @@ export default function App({ ready = true }: AppProps) {
   const hasGeminiApiKey = Boolean(geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY);
   const hasOpenAiApiKey = Boolean(openAiApiKey || import.meta.env.VITE_OPENAI_API_KEY);
   const hasOpenRouterApiKey = Boolean(openRouterApiKey || import.meta.env.VITE_OPENROUTER_API_KEY);
+  const hasMistralApiKey = Boolean(mistralApiKey || import.meta.env.VITE_MISTRAL_API_KEY);
 
   const [selectedModel, setSelectedModel] = useState<ModelConfig>(() => {
     const savedModelId = localStorage.getItem('amo_selected_model_id');
@@ -903,7 +912,7 @@ export default function App({ ready = true }: AppProps) {
   });
 
   const isSelectedModelReady = selectedModel.isCloud 
-    ? hasCloudProviderKey(selectedModel.family, { hasGroqApiKey, hasGeminiApiKey, hasOpenAiApiKey, hasOpenRouterApiKey })
+    ? hasCloudProviderKey(selectedModel.family, { hasGroqApiKey, hasGeminiApiKey, hasOpenAiApiKey, hasOpenRouterApiKey, hasMistralApiKey })
     : localRuntimeState.capability === 'ready';
   const amoStatusMeta: any = {
     waiting: { label: 'Waiting', dotClassName: 'bg-white/45', chipClassName: 'status-chip status-chip-waiting' },
@@ -1382,13 +1391,19 @@ export default function App({ ready = true }: AppProps) {
                  webContext: webSearchContext,
                });
                break;
-             case 'gemini':
-               reply = await geminiService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
-                 deepThink: isDeepThinkEnabled,
-                 webContext: webSearchContext,
-               });
-               break;
-             default:
+              case 'gemini':
+                reply = await geminiService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
+                  deepThink: isDeepThinkEnabled,
+                  webContext: webSearchContext,
+                });
+                break;
+              case 'mistral':
+                reply = await mistralService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
+                  deepThink: isDeepThinkEnabled,
+                  webContext: webSearchContext,
+                });
+                break;
+              default:
                throw new Error(`Unsupported cloud model family: ${runtimeModel.family}`);
            }
          } else {
@@ -1811,14 +1826,17 @@ export default function App({ ready = true }: AppProps) {
           hasGeminiKey={hasGeminiApiKey}
           hasOpenAiKey={hasOpenAiApiKey}
           hasOpenRouterKey={hasOpenRouterApiKey}
+          hasMistralKey={hasMistralApiKey}
           groqApiKey={groqApiKey}
           geminiApiKey={geminiApiKey}
           openAiApiKey={openAiApiKey}
           openRouterApiKey={openRouterApiKey}
+          mistralApiKey={mistralApiKey}
           onSetGroqKey={setGroqApiKey}
           onSetGeminiKey={setGeminiApiKey}
           onSetOpenAiKey={setOpenAiApiKey}
           onSetOpenRouterKey={setOpenRouterApiKey}
+          onSetMistralKey={setMistralApiKey}
           downloadedModels={nativeOfflineStatus?.availableModels.map(m => m.relativePath) || []}
           onSelectNativeModel={async (modelId) => {
             try {

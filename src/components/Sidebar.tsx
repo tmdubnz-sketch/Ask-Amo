@@ -82,14 +82,17 @@ interface SidebarProps {
   hasGeminiKey: boolean;
   hasOpenAiKey: boolean;
   hasOpenRouterKey: boolean;
+  hasMistralKey: boolean;
   groqApiKey: string;
   geminiApiKey: string;
   openAiApiKey: string;
   openRouterApiKey: string;
+  mistralApiKey: string;
   onSetGroqKey: (v: string) => void;
   onSetGeminiKey: (v: string) => void;
   onSetOpenAiKey: (v: string) => void;
   onSetOpenRouterKey: (v: string) => void;
+  onSetMistralKey: (v: string) => void;
   downloadedModels: string[];
   onSelectNativeModel?: (modelId: string) => void;
   onDownloadModel: (model: DownloadableModel) => void;
@@ -396,6 +399,7 @@ function ModelsPanel(props: SidebarProps) {
           <KeyRow label="Gemini" value={props.geminiApiKey} onChange={props.onSetGeminiKey} placeholder="AIza..." hasKey={props.hasGeminiKey} />
           <KeyRow label="OpenAI" value={props.openAiApiKey} onChange={props.onSetOpenAiKey} placeholder="sk-..." hasKey={props.hasOpenAiKey} />
           <KeyRow label="OpenRouter" value={props.openRouterApiKey} onChange={props.onSetOpenRouterKey} placeholder="sk-or-..." hasKey={props.hasOpenRouterKey} />
+          <KeyRow label="Mistral" value={props.mistralApiKey} onChange={props.onSetMistralKey} placeholder="p_..." hasKey={props.hasMistralKey} />
         </div>
       </div>
     </>
