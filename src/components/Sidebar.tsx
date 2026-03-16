@@ -378,6 +378,13 @@ function ModelsPanel(props: SidebarProps) {
                 );
               })}
             </optgroup>
+            <optgroup label="WebLLM (browser)">
+              {props.availableModels.filter(m => m.family === 'webllm').map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.name}
+                </option>
+              ))}
+            </optgroup>
             <optgroup label="Offline (downloaded)">
               {props.downloadedModels.length > 0 ? (
                 props.downloadedModels.map((modelId) => (
