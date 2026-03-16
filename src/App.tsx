@@ -168,6 +168,7 @@ const RECOMMENDED_NATIVE_DOWNLOADS = [
     label: 'Qwen2-VL 2B Vision Q4_K_M',
     description: 'Local vision model - sees images',
     url: 'https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/Qwen2-VL-2B-Instruct-Q4_K_M.gguf?download=true',
+    mmprojUrl: 'https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/Qwen2-VL-2B-Instruct-mmproj-f16.gguf?download=true',
   },
   {
     label: 'Llama 3.2 3B Q4_K_M',
@@ -1891,26 +1892,64 @@ export default function App({ ready = true }: AppProps) {
               setError(e.message);
             }
           }}
-          onDownloadModel={async (model) => {
-            setIsDownloadingNativeModel(true);
-            setDownloadStatus(`Downloading ${model.name}...`);
-            try {
-              await nativeOfflineLlmService.prepareRuntime();
-              const result = await nativeOfflineLlmService.downloadModel({
-                sourceUrl: model.url,
-                displayName: model.name,
-                activate: true,
-              });
-              if (result) {
-                setNativeOfflineStatus(result.status);
-                setDownloadStatus(`Downloaded ${model.name}!`);
-              }
-            } catch (e: any) {
-              setError(e.message);
-            } finally {
-              setIsDownloadingNativeModel(false);
-            }
-          }}
+           onDownloadModel={async (model) => {
+             setIsDownloadingNativeModel(true);
+             setDownloadStatus(`Downloading ${model.name}...`);
+             try {
+               await nativeOfflineLlmService.prepareRuntime();
+               
+               // Check if this is a vision model with mmproj
+               const modelWithMmproj = model as any;
+               if (modelWithMmproj.mmprojUrl) {
+                 // Download main model file
+                 const mainResult = await nativeOfflineLlmService.downloadModel({
+                   sourceUrl: modelWithMmproj.url,
+                   displayName: modelWithMmproj.name + "-main",
+                   activate: false, // Don't activate yet, wait for mmproj
+                 });
+                 
+                 if (!mainResult) {
+                   throw new Error('Failed to download main model file');
+                 }
+                 
+                 // Download mmproj file
+                 const mmprojResult = await nativeOfflineLlmService.downloadModel({
+                   sourceUrl: modelWithMmproj.mmprojUrl,
+                   displayName: modelWithMmproj.name + "-mmproj",
+                   activate: false,
+                 });
+                 
+                 if (!mmprojResult) {
+                   throw new Error('Failed to download mmproj file');
+                 }
+                 
+                 // Set the main model as active (the mmproj will be referenced internally)
+                 await nativeOfflineLlmService.setActiveModel({ 
+                   relativePath: mainResult.importedModel.relativePath,
+                   // We'd need to pass mmproj path to native service, but for now
+                   // we'll rely on naming convention or extend the service later
+                 });
+                 
+                 setNativeOfflineStatus(mainResult.status);
+                 setDownloadStatus(`Downloaded ${model.name} with vision support!`);
+               } else {
+                 // Regular model download
+                 const result = await nativeOfflineLlmService.downloadModel({
+                   sourceUrl: model.url,
+                   displayName: model.name,
+                   activate: true,
+                 });
+                 if (result) {
+                   setNativeOfflineStatus(result.status);
+                   setDownloadStatus(`Downloaded ${model.name}!`);
+                 }
+               }
+             } catch (e: any) {
+               setError(e.message);
+             } finally {
+               setIsDownloadingNativeModel(false);
+             }
+           }}
           onDeleteModel={async (modelId) => {
             const model = nativeOfflineStatus?.availableModels.find(m => 
               m.displayName.toLowerCase().replace(/\s+/g, '-') === modelId

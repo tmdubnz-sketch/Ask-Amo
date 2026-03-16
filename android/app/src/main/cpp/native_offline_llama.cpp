@@ -22,6 +22,7 @@ std::mutex g_runtime_mutex;
 std::string g_models_root;
 std::string g_imports_root;
 std::string g_loaded_model_path;
+std::string g_loaded_mmproj_path;
 std::string g_template_hint = "generic";
 std::string g_runtime_message = LLAMA_CPP_VENDOR_READY
     ? "Native llama.cpp runtime is available."
@@ -35,15 +36,6 @@ llama_context * g_ctx = nullptr;
 llama_sampler * g_sampler = nullptr;
 const llama_vocab * g_vocab = nullptr;
 #endif
-
-constexpr int kMaxContextTokens = 768;
-constexpr int kMaxGenerationTokens = 36;
-constexpr int kReservedGenerationTokens = 192;
-constexpr int kTokenPieceBufferSize = 512;
-constexpr int kMaxGenerationMillis = 8000;
-
-void log_debug(const std::string & message) {
-    __android_log_print(ANDROID_LOG_DEBUG, kLogTag, "%s", message.c_str());
 }
 
 void log_error(const std::string & message) {
@@ -69,6 +61,7 @@ std::string toStdString(JNIEnv * env, jstring value) {
 void unload_model_locked() {
     g_model_loaded = false;
     g_loaded_model_path.clear();
+    g_loaded_mmproj_path.clear();
 
     if (g_sampler != nullptr) {
         llama_sampler_free(g_sampler);
