@@ -758,10 +758,14 @@ export default function App({ ready = true }: AppProps) {
     try {
       if (selectedModel.family === 'native') {
         await ensureNativeOfflineReady();
-      } else {
-        // For cloud API models, this will fail - only use for WebLLM (webllm family) or pre-loaded models
+      } else if (selectedModel.family === 'webllm') {
+        // WebLLM - download and load in browser via WebGPU
         await webLlmService.prepareModel(selectedModel.id, (p) => setDownloadStatus(`Loading: ${Math.round(p * 100)}%`));
         setLoadedModelId(selectedModel.id);
+        setDownloadStatus('WebLLM model loaded!');
+      } else {
+        // Cloud models - just switch (no download needed for API-based)
+        setDownloadStatus('Cloud model selected.');
       }
     } catch (e: any) {
       setError(e.message);
@@ -1422,27 +1426,47 @@ export default function App({ ready = true }: AppProps) {
                 });
                 break;
               default:
-               throw new Error(`Unsupported cloud model family: ${runtimeModel.family}`);
-           }
-          } else {
-             const finalPrompt = userPrompt + (visionPromptSuffix || '');
-             const result = await nativeReplyCoordinator.generateAndCommit({
-              chatId: currentChatId,
-              userInput: finalPrompt,
-              knowledgeContext: bundle.knowledgeContext,
-              webContext: webSearchContext,
-              ensureReady: ensureNativeOfflineReady,
-              generate: p => nativeOfflineLlmService.generate({ prompt: p }),
-              onStatus: setNativeOfflineStatus,
-              onRuntimeState: setAmoRuntimeState,
-               onCommit: t => {
+                throw new Error(`Unsupported cloud model family: ${runtimeModel.family}`);
+            }
+           } else if (runtimeModel.family === 'webllm') {
+             // WebLLM - browser-based offline model via WebGPU
+             const webllmMessages = [
+               { role: 'system' as const, content: 'You are Amo, a grounded New Zealand assistant.' },
+               ...history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+               { role: 'user' as const, content: userPrompt }
+             ];
+             
+             const handleWebLLMUpdate = (text: string) => {
+               if (isRequestCanceled(requestId)) return;
+               updateMessage(assistantId, text, true);
+             };
+             
+             try {
+               reply = await webLlmService.generate(webllmMessages, handleWebLLMUpdate);
+             } catch (e: any) {
+               // If WebLLM fails, fall back to error message
+               reply = `WebLLM error: ${e.message}. Try a different model or ensure WebGPU is available.`;
+             }
+           } else {
+              // Native offline model (llama.cpp via Android JNI)
+              const finalPrompt = userPrompt + (visionPromptSuffix || '');
+              const result = await nativeReplyCoordinator.generateAndCommit({
+               chatId: currentChatId,
+               userInput: finalPrompt,
+               knowledgeContext: bundle.knowledgeContext,
+               webContext: webSearchContext,
+               ensureReady: ensureNativeOfflineReady,
+               generate: p => nativeOfflineLlmService.generate({ prompt: p }),
+               onStatus: setNativeOfflineStatus,
+               onRuntimeState: setAmoRuntimeState,
+                onCommit: t => {
                  if (isRequestCanceled(requestId)) return;
                  updateMessage(assistantId, t, false);
                  finalizeMessage(assistantId);
                }
-             });
-             reply = result.text;
-            }
+              });
+              reply = result.text;
+             }
 
            if (isRequestCanceled(requestId)) {
              return;
