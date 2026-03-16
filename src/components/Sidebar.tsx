@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { AMO_COMMANDS, AMO_PROMPT_TEMPLATES } from '../data/amoHelpData';
+import { ModelDownloadManager, type DownloadableModel } from './ModelDownloadManager';
 import type { ChatSession } from '../types';
 import type {
   ConversationMemoryRow,
@@ -89,12 +90,17 @@ interface SidebarProps {
   onSetGeminiKey: (v: string) => void;
   onSetOpenAiKey: (v: string) => void;
   onSetOpenRouterKey: (v: string) => void;
-  onDownloadModel: () => void;
+  downloadedModels: string[];
+  onSelectNativeModel?: (modelId: string) => void;
+  onDownloadModel: (model: DownloadableModel) => void;
+  onDeleteModel: (modelId: string) => void;
   onImportModel: () => void;
   isDownloadingModel: boolean;
   onSendPrompt: (text: string) => void;
   isVoiceMode: boolean;
   onToggleVoiceMode: () => void;
+  voiceContinuous: boolean;
+  onToggleVoiceContinuous: () => void;
   isWebSearchEnabled: boolean;
   onToggleWebSearch: () => void;
   isDeepThinkEnabled: boolean;
@@ -334,43 +340,54 @@ function ModelsPanel(props: SidebarProps) {
     <>
       <PanelHeader title="AI models" subtitle="Runtime selection and API keys" />
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
-        <SectionLabel>Native offline</SectionLabel>
-        <div className="p-3 rounded-xl border border-white/10 bg-white/[0.03] mb-2">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <div className="text-xs font-semibold text-white/80">{props.nativeModelName || 'No model loaded'}</div>
-              <div className="text-[10px] text-white/35 mt-0.5">Native GGUF · on-device · no internet needed</div>
-            </div>
-            <StatusBadge status={props.nativeModelStatus === 'ready' ? 'ok' : 'warn'} />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={props.onDownloadModel} disabled={props.isDownloadingModel} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-[#ff4e00]/25 bg-[#ff4e00]/8 text-[10px] font-bold uppercase tracking-widest text-[#ff8a5c] hover:bg-[#ff4e00]/15 transition-all disabled:opacity-50">
-              {props.isDownloadingModel ? <Loader2 className="w-3 h-3 animate-spin" /> : <DownloadCloud className="w-3 h-3" />} Download
-            </button>
-            <button onClick={props.onImportModel} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-white/12 text-[10px] font-bold uppercase tracking-widest text-white/50 hover:text-white/80 hover:border-white/20 transition-all">
-              <FolderOpen className="w-3 h-3" /> Import
-            </button>
-          </div>
-          <div className="mt-2 text-[9px] text-white/25 leading-relaxed">Recommended: Phi-3.5 Mini 3.8B Q4_K_M for Snapdragon 865</div>
-        </div>
+        <SectionLabel>Download models</SectionLabel>
+        <ModelDownloadManager
+          downloadedModels={props.downloadedModels}
+          isDownloading={props.isDownloadingModel}
+          onDownload={props.onDownloadModel}
+          onDelete={props.onDeleteModel}
+        />
         <SectionLabel>Active model</SectionLabel>
         <div className="mb-3">
           <select
             value={props.selectedModelId}
-            onChange={(e) => props.onSelectModel(e.target.value)}
+            onChange={(e) => {
+              const isNative = e.target.value.startsWith('native:');
+              if (isNative && props.onSelectNativeModel) {
+                props.onSelectNativeModel(e.target.value.replace('native:', ''));
+              } else {
+                props.onSelectModel(e.target.value);
+              }
+            }}
             className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-[#ff4e00]/50 cursor-pointer"
           >
-            {props.availableModels.map((model) => {
-              const isDisabled = model.isCloud && !((model.family === 'groq' && props.hasGroqKey) || (model.family === 'gemini' && props.hasGeminiKey) || (model.family === 'openai' && props.hasOpenAiKey) || (model.family === 'openrouter' && props.hasOpenRouterKey));
-              return (
-                <option key={model.id} value={model.id} disabled={isDisabled}>
-                  {model.name} {model.isCloud ? '(cloud)' : '(offline)'}
-                </option>
-              );
-            })}
+            <optgroup label="Cloud">
+              {props.availableModels.filter(m => m.isCloud).map((model) => {
+                const hasKey = (model.family === 'groq' && props.hasGroqKey) || 
+                              (model.family === 'gemini' && props.hasGeminiKey) || 
+                              (model.family === 'openai' && props.hasOpenAiKey) || 
+                              (model.family === 'openrouter' && props.hasOpenRouterKey);
+                return (
+                  <option key={model.id} value={model.id} disabled={!hasKey}>
+                    {model.name} {!hasKey && '(needs key)'}
+                  </option>
+                );
+              })}
+            </optgroup>
+            <optgroup label="Offline (downloaded)">
+              {props.downloadedModels.length > 0 ? (
+                props.downloadedModels.map((modelId) => (
+                  <option key={`native:${modelId}`} value={`native:${modelId}`}>
+                    {modelId.replace(/-/g, ' ')}
+                  </option>
+                ))
+              ) : (
+                <option disabled>No models downloaded</option>
+              )}
+            </optgroup>
           </select>
           <div className="text-[9px] text-white/30 mt-1.5 ml-1">
-            {props.availableModels.find(m => m.id === props.selectedModelId)?.description}
+            {props.availableModels.find(m => m.id === props.selectedModelId)?.description || 'Local offline model'}
           </div>
         </div>
         <SectionLabel>Cloud providers</SectionLabel>
@@ -457,6 +474,7 @@ function SettingsPanel(props: SidebarProps) {
         <SectionLabel>Behaviour</SectionLabel>
         <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 divide-y divide-white/[0.06]">
           <ToggleRow label="Voice mode" description="Speak replies automatically" value={props.isVoiceMode} onToggle={props.onToggleVoiceMode} icon={Mic} />
+          <ToggleRow label="Continuous voice" description="Keep mic open after requests" value={props.voiceContinuous} onToggle={props.onToggleVoiceContinuous} icon={Mic} />
           <ToggleRow label="Web search" description="Search before answering" value={props.isWebSearchEnabled} onToggle={props.onToggleWebSearch} icon={Search} />
           <ToggleRow label="Deep think" description="More careful reasoning" value={props.isDeepThinkEnabled} onToggle={props.onToggleDeepThink} icon={Brain} />
         </div>

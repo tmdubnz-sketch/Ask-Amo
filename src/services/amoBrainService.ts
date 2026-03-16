@@ -63,6 +63,7 @@ export const amoBrainService = {
       tags,
       weight,
     });
+    console.info('[Brain] Remembered:', scope, title);
   },
 
   async summarize(scope: string, sourceType: string, sourceId: string, summary: string, keywords: string[] = []): Promise<void> {

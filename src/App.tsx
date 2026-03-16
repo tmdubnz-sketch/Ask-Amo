@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { SplashScreen } from '@capacitor/splash-screen';
 import { ErrorBoundary, DefaultFallback } from './components/ErrorBoundary';
 import { performanceMonitoringService, usePerformanceMonitoring } from './services/performanceMonitoringService';
 import { 
@@ -463,7 +465,11 @@ function resolveLocalRuntimeState(options: any): LocalRuntimeState {
   };
 }
 
-export default function App() {
+type AppProps = {
+  ready?: boolean;
+};
+
+export default function App({ ready = true }: AppProps) {
   const { metrics, startMeasure, measure } = usePerformanceMonitoring();
   const [chats, setChats] = useState<ChatSession[]>(() => readStoredChats());
 
@@ -491,9 +497,12 @@ export default function App() {
     gemini: false,
   });
   
-  const [isVoiceMode, setIsVoiceMode] = useState(() => localStorage.getItem('amo_voice_mode') === 'true');
+  const [isVoiceMode, setIsVoiceMode] = useState(() => {
+    const stored = localStorage.getItem('amo_voice_mode');
+    return stored === null ? true : stored === 'true';
+  });
   const [isListening, setIsListening] = useState(false);
-  const [voiceContinuous, setVoiceContinuous] = useState(false);
+  const [voiceContinuous, setVoiceContinuous] = useState(() => localStorage.getItem('amo_voice_continuous') === 'true');
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isDeepThinkEnabled, setIsDeepThinkEnabled] = useState(() => localStorage.getItem('amo_deep_think_enabled') === 'true');
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(() => localStorage.getItem('amo_web_search_enabled') !== 'false');
@@ -510,6 +519,7 @@ export default function App() {
   const [downloadStatus, setDownloadStatus] = useState('');
    const [error, setError] = useState<string | null>(null);
    const [isLoading, setIsLoading] = useState(false);
+   const [isInitializing, setIsInitializing] = useState(true);
    const [input, setInput] = useState('');
    const [selectedImage, setSelectedImage] = useState<string | null>(null);
    const [activeView, setActiveView] = useState<ActiveView>('chat');
@@ -556,6 +566,7 @@ export default function App() {
   useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('gemini', geminiApiKey); }, [areApiKeysHydrated, geminiApiKey]);
 
   useEffect(() => {
+    if (!ready) return;
     void (async () => {
       try {
         await knowledgeStoreService.init();
@@ -565,8 +576,29 @@ export default function App() {
         console.info('[AskAmo] Brain bootstrap complete.');
       } catch (e) {
         console.error('[AskAmo] Brain bootstrap failed:', e);
+      } finally {
+        setIsInitializing(false);
       }
     })();
+  }, [ready]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    
+    const handleAppStateChange = async (state: { isActive: boolean }) => {
+      if (!state.isActive) {
+        console.log('[AppState] App going to background');
+      } else {
+        console.log('[AppState] App resumed - quick refresh');
+        await refreshBrainState();
+      }
+    };
+
+    CapacitorApp.addListener('appStateChange', handleAppStateChange).catch(console.error);
+
+    return () => {
+      CapacitorApp.removeAllListeners().catch(console.error);
+    };
   }, []);
 
   const refreshNativeOfflineStatus = async () => {
@@ -799,6 +831,8 @@ export default function App() {
       const chatScope = `chat:${currentChatId}`;
       const appScope = 'app:ask-amo';
 
+      console.info('[BrainState] Refreshing for scopes:', chatScope, appScope);
+
       const [
         chatMemoryRows,
         appMemoryRows,
@@ -815,11 +849,15 @@ export default function App() {
         amoBrainService.getSeedPacks(),
       ]);
 
+      console.info('[BrainState] Chat memory:', chatMemoryRows.length, 'App memory:', appMemoryRows.length);
+
       const allMemory = [...chatMemoryRows, ...appMemoryRows]
         .filter((row, idx, arr) => arr.findIndex(r => r.id === row.id) === idx);
 
       const allSummaries = [...chatSummaryRows, ...appSummaryRows]
         .filter((row, idx, arr) => arr.findIndex(r => r.id === row.id) === idx);
+
+      console.info('[BrainState] Total memory rows:', allMemory.length);
 
       setBrainMemoryRows(allMemory);
       setBrainSummaryRows(allSummaries);
@@ -1655,7 +1693,21 @@ export default function App() {
     );
 
   return (
-    <ErrorBoundary fallback={DefaultFallback}>
+    <>
+      {isInitializing && (
+        <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#ff4e00] to-[#ff8a5c] flex items-center justify-center mb-6 animate-pulse">
+            <span className="font-serif italic font-bold text-4xl text-white tracking-wider">A</span>
+          </div>
+          <h1 className="font-serif italic font-semibold text-2xl tracking-[0.2em] text-white mb-2">ASK AMO</h1>
+          <div className="flex items-center gap-2 text-white/50">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Initializing brain & knowledge...</span>
+          </div>
+          <p className="text-xs text-white/30 mt-4">First launch may take 10-30 seconds</p>
+        </div>
+      )}
+      <ErrorBoundary fallback={DefaultFallback}>
       <div className="flex flex-col h-screen bg-black text-[#E0E0E0] font-sans selection:bg-[#ff4e00]/30 relative overflow-hidden">
           <div className="atmosphere" />
           
@@ -1756,12 +1808,54 @@ export default function App() {
           onSetGeminiKey={setGeminiApiKey}
           onSetOpenAiKey={setOpenAiApiKey}
           onSetOpenRouterKey={setOpenRouterApiKey}
-          onDownloadModel={handleDownloadAndLoad}
+          downloadedModels={nativeOfflineStatus?.availableModels.map(m => m.relativePath) || []}
+          onSelectNativeModel={async (modelId) => {
+            try {
+              await nativeOfflineLlmService.setActiveModel({ relativePath: modelId });
+              await refreshNativeOfflineStatus();
+            } catch (e: any) {
+              setError(e.message);
+            }
+          }}
+          onDownloadModel={async (model) => {
+            setIsDownloadingNativeModel(true);
+            setDownloadStatus(`Downloading ${model.name}...`);
+            try {
+              await nativeOfflineLlmService.prepareRuntime();
+              const result = await nativeOfflineLlmService.downloadModel({
+                sourceUrl: model.url,
+                displayName: model.name,
+                activate: true,
+              });
+              if (result) {
+                setNativeOfflineStatus(result.status);
+                setDownloadStatus(`Downloaded ${model.name}!`);
+              }
+            } catch (e: any) {
+              setError(e.message);
+            } finally {
+              setIsDownloadingNativeModel(false);
+            }
+          }}
+          onDeleteModel={async (modelId) => {
+            const model = nativeOfflineStatus?.availableModels.find(m => 
+              m.displayName.toLowerCase().replace(/\s+/g, '-') === modelId
+            );
+            if (!model) return;
+            try {
+              const status = await nativeOfflineLlmService.removeModel({ relativePath: model.relativePath });
+              setNativeOfflineStatus(status);
+            } catch (e: any) {
+              setError(e.message);
+            }
+          }}
           onImportModel={handleImportNativeModel}
           isDownloadingModel={isDownloadingNativeModel}
           onSendPrompt={(text) => { setInput(text); inputRef.current = text; textareaRef.current?.focus(); }}
           isVoiceMode={isVoiceMode}
           onToggleVoiceMode={() => setIsVoiceMode(!isVoiceMode)}
+          voiceContinuous={voiceContinuous}
+          onToggleVoiceContinuous={() => { const newVal = !voiceContinuous; setVoiceContinuous(newVal); localStorage.setItem('amo_voice_continuous', String(newVal)); }}
           isWebSearchEnabled={isWebSearchEnabled}
           onToggleWebSearch={() => setIsWebSearchEnabled(!isWebSearchEnabled)}
           isDeepThinkEnabled={isDeepThinkEnabled}
@@ -1865,11 +1959,12 @@ export default function App() {
                     <button onClick={isLoading ? handleCancelThinking : handleSend} disabled={!isLoading && !input.trim()} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-gradient-to-br from-orange-500 to-[#ff4e00] text-white flex items-center justify-center hover:opacity-90 disabled:opacity-30 transition-all shadow-lg">{isLoading ? <X className="w-5 h-5" /> : <Send className="w-4 h-4 ml-0.5" />}</button>
                  </div>
                </div>
-             </div>
-           </div>
-         )}
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </ErrorBoundary>
+    </>
   );
 }

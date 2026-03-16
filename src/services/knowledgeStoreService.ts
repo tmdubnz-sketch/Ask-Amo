@@ -916,6 +916,12 @@ export class KnowledgeStoreService {
       ORDER BY pack_type ASC, pack_name ASC
     `);
   }
+
+  async forceCommit(): Promise<void> {
+    // No-op: SQLite auto-commits in default mode
+    // Keeping method for potential future use with explicit transactions
+    console.log('[KnowledgeStore] forceCommit: auto-commit mode active');
+  }
 }
 
 export const knowledgeStoreService = new KnowledgeStoreService();

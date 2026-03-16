@@ -94,13 +94,25 @@ export const knowledgeBootstrapService = {
 
     await vectorDbService.init();
     await vectorDbService.loadFromStorage();
+    console.info('[Bootstrap] Vector DB loaded, docs:', vectorDbService.getDocuments().length);
 
     await bootstrapSelfKnowledge();
+    console.info('[Bootstrap] Self knowledge bootstrapped');
+
     await bootstrapHelpKnowledge();
+    console.info('[Bootstrap] Help knowledge bootstrapped');
+
     await bootstrapCommunicationStyle();
+    console.info('[Bootstrap] Communication style bootstrapped');
+
     await this.seedPermanentFacts();
+    console.info('[Bootstrap] Permanent facts seeded');
+
     await this.seedCommunicationExamples();
+    console.info('[Bootstrap] Communication examples seeded');
+
     await this.seedStarterPackContent();
+    console.info('[Bootstrap] Starter pack content seeded');
 
     console.info('[Bootstrap] Brain population complete.');
   },
@@ -166,6 +178,10 @@ export const knowledgeBootstrapService = {
     ];
 
     for (const fact of FACTS) {
+      const existing = await amoBrainService.getConversationMemory(fact.scope);
+      if (existing.some(m => m.title === fact.title)) {
+        continue;
+      }
       await amoBrainService.remember(
         fact.scope,
         fact.title,
@@ -192,7 +208,12 @@ export const knowledgeBootstrapService = {
       { q: 'cheers bro', a: 'Sweet as.' },
     ];
 
+    const existing = await amoBrainService.getConversationMemory('app:ask-amo');
     for (const ex of EXCHANGES) {
+      const title = `Example: ${ex.q}`;
+      if (existing.some(m => m.title === title)) {
+        continue;
+      }
       await amoBrainService.remember(
         'app:ask-amo',
         `Example: ${ex.q}`,
@@ -205,14 +226,17 @@ export const knowledgeBootstrapService = {
   },
 
   async seedStarterPackContent(): Promise<void> {
+    const existing = await amoBrainService.getConversationMemory('app:ask-amo');
     for (const pack of AMO_STARTER_PACKS) {
-      await amoBrainService.remember(
-        'app:ask-amo',
-        pack.name,
-        pack.content,
-        ['starter-pack', pack.pillar, pack.key],
-        7,
-      );
+      if (!existing.some(m => m.title === pack.name)) {
+        await amoBrainService.remember(
+          'app:ask-amo',
+          pack.name,
+          pack.content,
+          ['starter-pack', pack.pillar, pack.key],
+          7,
+        );
+      }
 
       const docId = `pack:${pack.key}`;
       const docs = vectorDbService.getDocuments();
