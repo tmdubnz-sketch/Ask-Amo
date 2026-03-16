@@ -35,7 +35,7 @@ export class WebLlmService {
   }
 
   async generate(
-    messages: { role: "system" | "user" | "assistant"; content: string }[],
+    messages: { role: "system" | "user" | "assistant"; content: string | { type: string; image_url?: { url: string } }[] }[],
     onUpdate: (text: string) => void
   ) {
     if (!this.engine) {
@@ -44,11 +44,17 @@ export class WebLlmService {
 
     let fullText = "";
     
-    // We filter out any empty messages or image fields before sending to WebLLM
-    const cleanMessages = messages.map(m => ({ role: m.role, content: m.content }));
+    // Handle vision messages - convert to multimodal content format for WebLLM
+    const processedMessages = messages.map(m => {
+      if (typeof m.content === 'string') {
+        return { role: m.role, content: m.content };
+      }
+      // For multimodal content (array with image_url)
+      return { role: m.role, content: m.content };
+    });
 
     const chunks = await this.engine.chat.completions.create({
-      messages: cleanMessages,
+      messages: processedMessages as any,
       stream: true,
       temperature: 0.3,
       max_tokens: 256,

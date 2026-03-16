@@ -18,7 +18,7 @@ export interface ModelConfig {
   name: string;
   description: string;
   size: string;
-  family: 'gemma' | 'qwen' | 'groq' | 'openrouter' | 'openai' | 'gemini' | 'mistral' | 'native';
+  family: 'gemma' | 'qwen' | 'groq' | 'openrouter' | 'openai' | 'gemini' | 'mistral' | 'native' | 'webllm';
   isCloud?: boolean;
   isVision?: boolean;
 }
@@ -123,5 +123,14 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
     size: "2.4GB",
     family: 'native',
     isCloud: false
+  },
+  {
+    id: "Llama-3.2-3B-Instruct-webllm",
+    name: "WebLLM Vision",
+    description: "Llama 3.2 Vision 3B - runs in browser via WebGPU. Supports images.",
+    size: "~2GB",
+    family: 'webllm',
+    isCloud: false,
+    isVision: true
   }
 ];

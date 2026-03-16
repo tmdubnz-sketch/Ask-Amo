@@ -759,6 +759,7 @@ export default function App({ ready = true }: AppProps) {
       if (selectedModel.family === 'native') {
         await ensureNativeOfflineReady();
       } else {
+        // For cloud API models, this will fail - only use for WebLLM (webllm family) or pre-loaded models
         await webLlmService.prepareModel(selectedModel.id, (p) => setDownloadStatus(`Loading: ${Math.round(p * 100)}%`));
         setLoadedModelId(selectedModel.id);
       }
@@ -1184,25 +1185,27 @@ export default function App({ ready = true }: AppProps) {
        const contextResult = await injectFileContext(userPrompt, currentChatId || 'default');
        userPrompt = contextResult.enhancedPrompt;
      }
-     
-     const pendingImage = selectedImage;
        
+       const pendingImage = selectedImage;
+         
        // Auto-switch to vision model if image is attached and current model doesn't support vision
        if (pendingImage && !selectedModel.isVision) {
-         // Prefer Gemini for vision (supports multimodal), fallback to cloud if available
-         const visionModel = AVAILABLE_MODELS.find(m => m.isVision && m.family === 'gemini') 
-           || AVAILABLE_MODELS.find(m => m.isVision && m.isCloud);
+         // Prefer WebLLM vision (local/offline) if loaded, then cloud with vision
+         const webllmVision = loadedModelId ? AVAILABLE_MODELS.find(m => m.isVision && m.family === 'webllm' && m.id === loadedModelId) : null;
+         const geminiVision = AVAILABLE_MODELS.find(m => m.isVision && m.family === 'gemini');
+         const cloudVision = AVAILABLE_MODELS.find(m => m.isVision && m.isCloud);
+         const visionModel = webllmVision || geminiVision || cloudVision;
          if (visionModel) {
            setSelectedModel(visionModel);
          }
        }
        
-       // For native vision models, embed image in prompt
-       let visionPromptSuffix = '';
-       if (pendingImage && selectedModel.family === 'native' && selectedModel.isVision) {
-         // Format for llama.cpp vision: embed base64 image in prompt
-         visionPromptSuffix = `\n\n<image>${pendingImage}</image>`;
-       }
+        // For native/webllm vision models, embed image in prompt
+        let visionPromptSuffix = '';
+        if (pendingImage && selectedModel.isVision && (selectedModel.family === 'native' || selectedModel.family === 'webllm')) {
+          // Format for llama.cpp vision: embed base64 image in prompt
+          visionPromptSuffix = `\n\n<image>${pendingImage}</image>`;
+        }
      
      const requestId = activeRequestIdRef.current + 1;
      activeRequestIdRef.current = requestId;
