@@ -1489,9 +1489,45 @@ export default function App({ ready = true }: AppProps) {
       }
     };
 
-  const speak = async (text: string) => {
-    await nativeTtsService.speak({ text, language: 'en-NZ' });
-  };
+   const speak = async (text: string) => {
+     // Chunked TTS for better responsiveness - speak as soon as we have complete sentences
+     if (!text || text.trim().length === 0) {
+       return;
+     }
+
+     // Split text into sentences for more natural chunking
+     const sentenceEndRegex = /[.!?]+/g;
+     const sentences = text.split(sentenceEndRegex);
+     const delimiters = text.match(sentenceEndRegex) || [];
+     
+     // Reconstruct sentences with their delimiters
+     const sentenceChunks: string[] = [];
+     for (let i = 0; i < sentences.length; i++) {
+       let chunk = sentences[i].trim();
+       if (chunk === '' && i < sentences.length - 1) {
+         // Skip empty sentences
+         continue;
+       }
+       if (i < delimiters.length) {
+         chunk += delimiters[i];
+       }
+       if (chunk.length > 0) {
+         sentenceChunks.push(chunk);
+       }
+     }
+
+     // Speak each sentence chunk with slight delay to avoid audio overlap
+     for (let i = 0; i < sentenceChunks.length; i++) {
+       const chunk = sentenceChunks[i];
+       if (chunk.trim().length > 0) {
+         await nativeTtsService.speak({ text: chunk, language: 'en-NZ' });
+         // Small pause between chunks to prevent audio clipping
+         if (i < sentenceChunks.length - 1) {
+           await new Promise(resolve => setTimeout(resolve, 150));
+         }
+       }
+     }
+   };
 
   const syncUploadedDocsFromStorage = async () => {
     await vectorDbService.loadFromStorage();

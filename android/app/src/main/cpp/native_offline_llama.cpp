@@ -8,16 +8,34 @@
 #include <thread>
 #include <vector>
 #include <cstdio>  // for printf
+#include <cstdarg> // for va_list
 
 // Temporary compatibility defines for older llama.cpp versions
 static const int kMaxContextTokens = 8192;
 static const int kReservedGenerationTokens = 256;
 static const int kTokenPieceBufferSize = 128;
+static const int kMaxGenerationTokens = 36;
+static const int kMaxGenerationMillis = 8000;
 
-// Stub log_debug if missing
-#ifndef log_debug
-#define log_debug(...) printf("[DEBUG] " __VA_ARGS__ "\n")
-#endif
+// Compatible log_debug function
+static void log_debug(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    printf("[DEBUG] ");
+    vprintf(fmt, args);
+    printf("\n");
+    va_end(args);
+}
+
+// Compatible log_error function  
+static void log_error(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    printf("[ERROR] ");
+    vprintf(fmt, args);
+    printf("\n");
+    va_end(args);
+}
 
 #ifndef LLAMA_CPP_VENDOR_READY
 #define LLAMA_CPP_VENDOR_READY 0
@@ -47,10 +65,6 @@ llama_context * g_ctx = nullptr;
 llama_sampler * g_sampler = nullptr;
 const llama_vocab * g_vocab = nullptr;
 #endif
-}
-
-void log_error(const std::string & message) {
-    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "%s", message.c_str());
 }
 
 std::string toStdString(JNIEnv * env, jstring value) {
@@ -201,12 +215,11 @@ std::string token_to_piece_locked(llama_token token) {
         return "";
     }
 
-    return std::string(buffer, static_cast<size_t>(size));
-}
-#endif
-}
+     return std::string(buffer, static_cast<size_t>(size));
+ }
+ #endif
 
-extern "C"
+ extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGetBackendName(JNIEnv * env, jclass /* clazz */) {
 #if LLAMA_CPP_VENDOR_READY
@@ -268,7 +281,7 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeLoadModel(
         return env->NewStringUTF(g_runtime_message.c_str());
     }
 
-    log_debug("loadModel:start path=" + model_path + " template=" + template_hint);
+     log_debug("loadModel:start path=%s template=%s", model_path.c_str(), template_hint.c_str());
     ensure_backend_initialized_locked();
     unload_model_locked();
 
@@ -319,13 +332,9 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeLoadModel(
     g_template_hint = template_hint.empty() ? "generic" : template_hint;
     g_model_loaded = true;
     g_runtime_message = "Native llama.cpp model loaded successfully.";
-    log_debug(
-        "loadModel:done ctx=" + std::to_string(context_params.n_ctx) +
-        " batch=" + std::to_string(context_params.n_batch) +
-        " ubatch=" + std::to_string(context_params.n_ubatch) +
-        " threads=" + std::to_string(thread_count) +
-        " mmap=" + std::string(model_params.use_mmap ? "true" : "false")
-    );
+     log_debug("loadModel:done ctx=%d batch=%d ubatch=%d threads=%d mmap=%s",
+         context_params.n_ctx, context_params.n_batch, context_params.n_ubatch, thread_count,
+         model_params.use_mmap ? "true" : "false");
     return env->NewStringUTF(g_runtime_message.c_str());
 #endif
 }
@@ -371,22 +380,22 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
         return env->NewStringUTF(g_runtime_message.c_str());
     }
 
-    log_debug("generate:prompt_chars=" + std::to_string(user_prompt.size()));
+     log_debug("generate:prompt_chars=%zu", user_prompt.size());
     log_debug("generate:clear_memory:start");
     llama_memory_clear(llama_get_memory(g_ctx), true);
     log_debug("generate:clear_memory:done");
     llama_sampler_reset(g_sampler);
 
     std::string formatted_prompt = apply_template_locked(user_prompt);
-    log_debug("generate:formatted_prompt_chars=" + std::to_string(formatted_prompt.size()));
+     log_debug("generate:formatted_prompt_chars=%zu", formatted_prompt.size());
     std::vector<llama_token> prompt_tokens;
     std::string token_error;
     if (!tokenize_prompt_locked(formatted_prompt, prompt_tokens, token_error)) {
         g_runtime_message = token_error;
-        log_error("generate:error tokenize failed: " + token_error);
+         log_error(("generate:error tokenize failed: " + token_error).c_str());
         return env->NewStringUTF(g_runtime_message.c_str());
     }
-    log_debug("generate:prompt_tokens=" + std::to_string(prompt_tokens.size()));
+     log_debug("generate:prompt_tokens=%zu", prompt_tokens.size());
 
     const int32_t max_batch = 1;
     if (llama_model_has_encoder(g_model)) {
@@ -411,7 +420,7 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
     size_t offset = 0;
     while (offset < prompt_tokens.size()) {
         const int32_t chunk_size = static_cast<int32_t>(std::min(prompt_tokens.size() - offset, static_cast<size_t>(max_batch)));
-        log_debug("generate:decode_prompt_chunk offset=" + std::to_string(offset) + " size=" + std::to_string(chunk_size));
+          log_debug("generate:decode_prompt_chunk offset=%zu size=%zu", (size_t)offset, (size_t)chunk_size);
         llama_batch prompt_batch = llama_batch_get_one(prompt_tokens.data() + offset, chunk_size);
         int32_t decode_result = llama_decode(g_ctx, prompt_batch);
         if (decode_result != 0) {
@@ -435,12 +444,12 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
             std::chrono::steady_clock::now() - generation_start
         ).count();
         if (elapsed >= kMaxGenerationMillis) {
-            log_debug("generate:timeout elapsed_ms=" + std::to_string(elapsed));
+             log_debug("generate:timeout elapsed_ms=%lld", (long long)elapsed);
             break;
         }
 
         if (needs_decode) {
-            log_debug("generate:decode_token index=" + std::to_string(generated_tokens));
+              log_debug("generate:decode_token index=%zu", (size_t)generated_tokens);
             int32_t decode_result = llama_decode(g_ctx, batch);
             if (decode_result != 0) {
                 g_runtime_message = "llama.cpp failed while generating tokens.";
@@ -451,10 +460,10 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
 
         llama_token token = llama_sampler_sample(g_sampler, g_ctx, -1);
         if (generated_tokens == 0) {
-            log_debug("generate:first_token=" + std::to_string(token));
+             log_debug("generate:first_token=%d", token);
         }
         if (llama_vocab_is_eog(g_vocab, token)) {
-            log_debug("generate:eog token=" + std::to_string(token));
+             log_debug("generate:eog token=%d", token);
             break;
         }
 
@@ -473,12 +482,12 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
 
     if (response.empty()) {
         g_runtime_message = "Native llama.cpp generated an empty response.";
-        log_error("generate:error empty response generated_tokens=" + std::to_string(generated_tokens));
+         log_error(("generate:error empty response generated_tokens=" + std::to_string(generated_tokens)).c_str());
         return env->NewStringUTF(g_runtime_message.c_str());
     }
 
     g_runtime_message = "Native llama.cpp generated a response.";
-    log_debug("generate:done generated_tokens=" + std::to_string(generated_tokens) + " response_chars=" + std::to_string(response.size()));
+     log_debug("generate:done generated_tokens=%d response_chars=%zu", generated_tokens, response.size());
     return env->NewStringUTF(response.c_str());
 #endif
 }

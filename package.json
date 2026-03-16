@@ -54,6 +54,7 @@
     "motion": "^12.34.3",
     "onnxruntime-web": "^1.16.2",
     "pdfjs-dist": "^5.5.207",
+    "piper-wasm": "^0.1.4",
     "pyodide": "^0.29.3",
     "quickjs-emscripten": "^0.32.0",
     "tailwind-merge": "^2.2.0",
