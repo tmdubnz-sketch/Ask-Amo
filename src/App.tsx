@@ -304,6 +304,9 @@ function getErrorMessage(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : '';
   if (message.includes('Missing VITE_GROQ_API_KEY')) return 'Cloud chat is not configured. Add VITE_GROQ_API_KEY to use Amo cloud replies and transcription.';
   if (message.includes('Missing OpenRouter API key')) return 'OpenRouter is not configured. Paste your OpenRouter API key in Settings to use OpenRouter cloud replies.';
+  if (message.includes('Missing Mistral API key')) return 'Mistral is not configured. Paste your Mistral API key in Settings to use Mistral cloud replies.';
+  if (message.includes('Missing Gemini API key')) return 'Gemini is not configured. Paste your Gemini API key in Settings to use Gemini cloud replies.';
+  if ( message.includes('401') || message.includes('authentication')) return 'API key is invalid or expired. Check your API key in Settings.';
   if (message.includes('Unsupported file type')) return 'That file type is not supported. Use PDF, TXT, or Markdown files.';
   if (message.includes('Setting up fake worker failed') || message.includes('Failed to fetch dynamically imported module') || message.includes('Loading chunk') || message.includes('Failed to load PDF')) return 'Could not open that PDF in this environment. Try again, or import a text or Markdown version instead.';
   return message || fallback;

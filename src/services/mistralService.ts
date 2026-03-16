@@ -44,7 +44,11 @@ export class MistralService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Mistral API Error: ${response.status}`);
+      const errorMsg = errorData.message || errorData.error?.message || `Mistral API Error: ${response.status}`;
+      if (response.status === 401) {
+        throw new Error('Mistral API key is invalid. Check your key in Settings > Models.');
+      }
+      throw new Error(errorMsg);
     }
 
     if (!response.body) {

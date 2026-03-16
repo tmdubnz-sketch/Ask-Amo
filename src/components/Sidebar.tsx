@@ -369,7 +369,8 @@ function ModelsPanel(props: SidebarProps) {
                 const hasKey = (model.family === 'groq' && props.hasGroqKey) || 
                               (model.family === 'gemini' && props.hasGeminiKey) || 
                               (model.family === 'openai' && props.hasOpenAiKey) || 
-                              (model.family === 'openrouter' && props.hasOpenRouterKey);
+                              (model.family === 'openrouter' && props.hasOpenRouterKey) ||
+                              (model.family === 'mistral' && props.hasMistralKey);
                 return (
                   <option key={model.id} value={model.id} disabled={!hasKey}>
                     {model.name} {!hasKey && '(needs key)'}
