@@ -60,10 +60,22 @@ export const useModelSettingsStore = create<ModelSettingsState>((set, get) => ({
       set({ localModels: models });
 
       if (models.length > 0 && !get().currentModelId) {
+        // Auto-select Phi-3.5-mini if available (best for S20), otherwise first model
+        const phi35Model = models.find(m => 
+          m.displayName.toLowerCase().includes('phi-3.5-mini') || 
+          m.relativePath.toLowerCase().includes('phi-3.5-mini')
+        );
+        
         const activeModel = status?.activeModel;
         const readyModel = models.find(m => m.id === activeModel?.relativePath);
+        
         if (readyModel) {
           set({ currentModelId: readyModel.id });
+        } else if (phi35Model) {
+          // Phi-3.5-mini found - auto-select it
+          console.log('[ModelStore] Auto-selecting Phi-3.5-mini as default');
+          set({ currentModelId: phi35Model.id });
+          await nativeOfflineLlmService.setActiveModel({ relativePath: phi35Model.id });
         } else {
           set({ currentModelId: models[0].id });
         }
@@ -95,6 +107,14 @@ function extractQuant(name: string): string | undefined {
 
 export function getInferenceParams(): InferenceParams {
   return useModelSettingsStore.getState();
+}
+
+export function getRecommendedParamsForS20(): InferenceParams {
+  return {
+    temperature: 0.7,
+    topP: 0.9,
+    maxTokens: 2048,
+  };
 }
 
 export function useLocalModels() {

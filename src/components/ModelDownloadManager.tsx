@@ -13,6 +13,13 @@ export interface DownloadableModel {
 
 export const AVAILABLE_OFFLINE_MODELS: DownloadableModel[] = [
   {
+    id: 'phi-3.5-mini',
+    name: 'Phi-3.5 Mini',
+    description: 'Microsoft - best balance for mobile (recommended for S20)',
+    url: 'https://huggingface.co/lm-kit/phi-3.5-mini-3.8b-instruct-gguf/resolve/main/Phi-3.5-mini-Instruct-Q4_K_M.gguf',
+    size: '~2.4 GB',
+  },
+  {
     id: 'llama-3.2-1b',
     name: 'Llama 3.2 1B',
     description: 'Latest Llama - small and fast',
@@ -32,13 +39,6 @@ export const AVAILABLE_OFFLINE_MODELS: DownloadableModel[] = [
     description: 'Fastest inference, lower capability',
     url: 'https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf',
     size: '~650 MB',
-  },
-  {
-    id: 'phi-3.5-mini',
-    name: 'Phi-3.5 Mini',
-    description: 'Microsoft - best balance for mobile',
-    url: 'https://huggingface.co/dabr1/Phi-3.5-mini-instruct_Uncensored-Q4_0_4_8.gguf',
-    size: '~2.3 GB',
   },
 ];
 

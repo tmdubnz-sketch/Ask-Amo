@@ -584,14 +584,16 @@ export function Sidebar(props: SidebarProps) {
       <div className={cn('fixed inset-y-0 left-0 z-50 flex transform transition-transform duration-300 shadow-2xl', props.isOpen ? 'translate-x-0' : '-translate-x-full')} style={{ width: '19rem' }}>
         <div className="w-13 flex flex-col items-center py-3 gap-1 bg-black/60 border-r border-white/8 shrink-0" style={{ width: '52px' }}>
           <button onClick={props.onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-white/25 hover:text-white/60 hover:bg-white/[0.05] transition-all mb-2"><X className="w-3.5 h-3.5" /></button>
-          {RAIL_ITEMS.map(item => (
-            <React.Fragment key={item.id}>
-              {item.separator && <div className="w-5 h-px bg-white/10 my-1" />}
-              <button onClick={() => setActiveTab(item.id)} title={item.label} className={cn('w-8 h-8 flex items-center justify-center rounded-xl transition-all', activeTab === item.id ? 'bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30' : 'text-white/30 hover:text-white/70 hover:bg-white/[0.05] border border-transparent')}>
-                <item.icon className="w-3.5 h-3.5" />
-              </button>
-            </React.Fragment>
-          ))}
+           <div className="flex flex-col space-y-1 w-full">
+             {RAIL_ITEMS.map((item, index) => (
+               <>
+                 {item.separator && index > 0 && <div className="h-px bg-white/10 my-1" />}
+                 <button onClick={() => setActiveTab(item.id)} title={item.label} className={cn('w-full h-12 flex items-center justify-center rounded-xl transition-all', activeTab === item.id ? 'bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30' : 'text-white/30 hover:text-white/70 hover:bg-white/[0.05] border border-transparent')}>
+                   <item.icon className="w-6 h-6" />
+                 </button>
+               </>
+             ))}
+           </div>
         </div>
         <div className="flex-1 flex flex-col bg-[#050505] border-r border-white/10 overflow-hidden">
           {panelMap[activeTab]}

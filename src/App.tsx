@@ -463,6 +463,32 @@ function getSelectableNativeTtsVoices(status: NativeTtsStatus | null) {
 
 function resolveLocalRuntimeState(options: any): LocalRuntimeState {
   const status = options.nativeOfflineStatus;
+  const selectedModel = options.selectedModel || {};
+  
+  // Detect WebLLM/browser model
+  const isWebLLM = 
+    selectedModel.runtime === 'webllm' ||
+    selectedModel.backend === 'webllm' ||
+    selectedModel.type === 'webllm' ||
+    selectedModel.id?.toLowerCase().includes('webllm') ||
+    selectedModel.family === 'webllm';
+
+  if (isWebLLM) {
+    // WebLLM/browser model path
+    const webReady = !!options.isWebLLMReady || !!options.loadedModelId;
+    return {
+      backend: 'webllm',
+      backendLabel: 'WebLLM (Browser)',
+      capability: webReady ? 'ready' : 'configured',
+      selectedModelId: selectedModel.id,
+      activeNativeModelPath: null,
+      loadedModelId: options.loadedModelId,
+      activeBackendModelId: webReady ? selectedModel.id : null,
+      reason: webReady ? null : 'WebLLM model not yet loaded',
+    };
+  }
+
+  // Native backend path
   const ready = !!(options.isNativeOfflineAvailable && status?.runtimeReady && status?.modelLoaded);
   const scaffold = !!(options.isNativeOfflineAvailable && status?.runtimeMode === 'scaffold');
   const activeNativeModelPath = status?.activeModel?.relativePath || null;
@@ -917,8 +943,6 @@ export default function App({ ready = true }: AppProps) {
   const currentChat = chats.find((c) => c.id === currentChatId) || chats[0];
   const { messages, setMessages, addMessage, updateMessage, addStreamingMessage, finalizeMessage, clearMessages } = useMessages(currentChat?.messages || []);
 
-  const isNativeOfflineAvailable = nativeOfflineLlmService.isAvailable();
-  const localRuntimeState = resolveLocalRuntimeState({ nativeOfflineStatus, isNativeOfflineAvailable, loadedModelId });
   const hasGroqApiKey = Boolean(groqApiKey || import.meta.env.VITE_GROQ_API_KEY);
   const hasGeminiApiKey = Boolean(geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY);
   const hasOpenAiApiKey = Boolean(openAiApiKey || import.meta.env.VITE_OPENAI_API_KEY);
@@ -933,6 +957,15 @@ export default function App({ ready = true }: AppProps) {
     }
 
     return getDefaultModelSelection();
+  });
+
+  const isNativeOfflineAvailable = nativeOfflineLlmService.isAvailable();
+  const localRuntimeState = resolveLocalRuntimeState({ 
+    nativeOfflineStatus, 
+    isNativeOfflineAvailable, 
+    loadedModelId,
+    selectedModel,
+    isWebLLMReady: loadedModelId !== null && selectedModel?.family === 'webllm'
   });
 
   const isSelectedModelReady = selectedModel.isCloud 
