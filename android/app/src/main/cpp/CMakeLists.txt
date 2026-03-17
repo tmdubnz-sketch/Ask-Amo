@@ -5,6 +5,19 @@ project(native_offline_llama)
 set(LLAMA_CPP_VENDOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp)
 
 # Force disable vendor - header conflicts in bundled llama.cpp prevent building
+# Issue: ggml-cpu-impl.h has multiple duplicate function definitions that conflict
+# with definitions in ggml-impl.h:
+# - ggml_compute_bf16_to_fp32 (line 69 vs ggml-impl.h:533)
+# - ggml_compute_fp32_to_bf16 (line 86 vs ggml-impl.h:550)
+# - ggml_vdotq_s32 (line 376 vs ggml-cpu/ggml-cpu-impl.h:309)
+# - ggml_compute_fp16_to_fp32 (line 398 vs ggml-impl.h:378)
+# - ggml_compute_fp32_to_fp16 (line 404 vs ggml-impl.h:401)
+#
+# This appears to be a version mismatch or improper merge in the bundled llama.cpp.
+# Options to fix:
+# 1. Update bundled llama.cpp to latest version
+# 2. Remove duplicate definitions from ggml-cpu-impl.h
+# 3. Use Android NDK pre-built llama.cpp library instead
 set(LLAMA_CPP_VENDOR_READY FALSE)
 
 # Auto-detection disabled - re-enable once llama.cpp headers are fixed
