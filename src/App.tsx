@@ -2068,13 +2068,13 @@ export default function App({ ready = true }: AppProps) {
           isDownloadingModel={isDownloadingNativeModel}
           onSendPrompt={(text) => { setInput(text); inputRef.current = text; textareaRef.current?.focus(); }}
           isVoiceMode={isVoiceMode}
-          onToggleVoiceMode={() => setIsVoiceMode(!isVoiceMode)}
-          voiceContinuous={voiceContinuous}
-          onToggleVoiceContinuous={() => { const newVal = !voiceContinuous; setVoiceContinuous(newVal); localStorage.setItem('amo_voice_continuous', String(newVal)); }}
-          isWebSearchEnabled={isWebSearchEnabled}
-          onToggleWebSearch={() => setIsWebSearchEnabled(!isWebSearchEnabled)}
-          isDeepThinkEnabled={isDeepThinkEnabled}
-          onToggleDeepThink={() => setIsDeepThinkEnabled(!isDeepThinkEnabled)}
+           onToggleVoiceMode={() => { const newVal = !isVoiceMode; setIsVoiceMode(newVal); localStorage.setItem('amo_voice_mode', String(newVal)); }}
+           voiceContinuous={voiceContinuous}
+           onToggleVoiceContinuous={() => { const newVal = !voiceContinuous; setVoiceContinuous(newVal); localStorage.setItem('amo_voice_continuous', String(newVal)); }}
+           isWebSearchEnabled={isWebSearchEnabled}
+           onToggleWebSearch={() => { const newVal = !isWebSearchEnabled; setIsWebSearchEnabled(newVal); localStorage.setItem('amo_web_search_enabled', String(newVal)); }}
+           isDeepThinkEnabled={isDeepThinkEnabled}
+           onToggleDeepThink={() => { const newVal = !isDeepThinkEnabled; setIsDeepThinkEnabled(newVal); localStorage.setItem('amo_deep_think_enabled', String(newVal)); }}
           onClearMemory={handleClearMemory}
           onExportHistory={handleExportHistory}
           onOpenInChrome={handleOpenInChrome}
