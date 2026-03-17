@@ -1336,42 +1336,62 @@ export default function App({ ready = true }: AppProps) {
         const template = matchTaskTemplate(userPrompt);
         const taskInput = template ? `${userPrompt}\n\nPlan:\n${template}` : userPrompt;
 
-        const generateFn = async (msgs: Array<{role: string; content: string}>, systemPrompt: string): Promise<string> => {
-          if (selectedModel.isCloud) {
-            let result = '';
-            const handler = (t: string) => { result = t; };
-            
-            switch (selectedModel.family) {
-              case 'groq':
-                result = await groqService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                break;
-              case 'openai':
-                result = await openaiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                break;
-              case 'gemini':
-                result = await geminiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                break;
-              case 'openrouter':
-                result = await openrouterService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                break;
-              case 'mistral':
-                result = await mistralService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                break;
-              default:
-                throw new Error(`Unsupported cloud model family: ${selectedModel.family}`);
-            }
-            return result;
-          }
-          const params = useModelSettingsStore.getState();
-          const prompt = `${systemPrompt}\n\nUser: ${msgs[msgs.length-1]?.content}\nAmo:`;
-          const res = await nativeOfflineLlmService.generate({ 
-            prompt,
-            temperature: params.temperature,
-            top_p: params.topP,
-            max_tokens: params.maxTokens,
-          });
-          return res?.text?.trim() || '';
-        };
+         const generateFn = async (msgs: Array<{role: string; content: string}>, systemPrompt: string): Promise<string> => {
+           if (selectedModel.isCloud) {
+             let result = '';
+             const handler = (t: string) => { result = t; };
+             
+             switch (selectedModel.family) {
+               case 'groq':
+                 result = await groqService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                 break;
+               case 'openai':
+                 result = await openaiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                 break;
+               case 'gemini':
+                 result = await geminiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                 break;
+               case 'openrouter':
+                 result = await openrouterService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                 break;
+               case 'mistral':
+                 result = await mistralService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                 break;
+               default:
+                 throw new Error(`Unsupported cloud model family: ${selectedModel.family}`);
+             }
+             return result;
+           } else if (selectedModel.family === 'webllm') {
+             // WebLLM IDE support - browser-based offline generation
+             const webllmMessages = [
+               { role: 'system' as const, content: systemPrompt },
+               ...msgs.filter(m => m.role !== 'system').map(m => ({ 
+                 role: m.role as 'user' | 'assistant' | 'system', 
+                 content: m.content 
+               }))
+             ];
+             
+             try {
+               const reply = await webLlmService.generate(webllmMessages, (text) => {
+                 // WebLLM streaming callback would be handled here if needed
+               });
+               return reply;
+             } catch (e: any) {
+               throw new Error(`WebLLM IDE generation failed: ${e.message}`);
+             }
+           }
+           
+           // Native offline model (llama.cpp via Android JNI)
+           const params = useModelSettingsStore.getState();
+           const prompt = `${systemPrompt}\n\nUser: ${msgs[msgs.length-1]?.content}\nAmo:`;
+           const res = await nativeOfflineLlmService.generate({ 
+             prompt,
+             temperature: params.temperature,
+             top_p: params.topP,
+             max_tokens: params.maxTokens,
+           });
+           return res?.text?.trim() || '';
+         };
 
         const loopResult = await runIdeLoop({
           chatId: currentChatId,
