@@ -89,6 +89,7 @@ public class NativeOfflineLlmPlugin extends Plugin {
     public void loadModel(PluginCall call) {
         String relativePath = call.getString("relativePath");
         String templateHint = call.getString("templateHint", "generic");
+        String mmprojRelativePath = call.getString("mmprojRelativePath", null);
 
         if (relativePath == null || relativePath.trim().isEmpty()) {
             call.reject("relativePath is required");
@@ -100,7 +101,12 @@ public class NativeOfflineLlmPlugin extends Plugin {
                 File modelFile = requireImportedModel(relativePath);
                 String normalizedTemplateHint = normalizeTemplateHint(templateHint, modelFile.getName());
                 writeActiveModel(modelFile.getName(), stripExtension(modelFile.getName()), normalizedTemplateHint);
-                String message = NativeOfflineLlmRuntime.loadModel(modelFile.getAbsolutePath(), normalizedTemplateHint);
+                String mmprojPath = null;
+                if (mmprojRelativePath != null && !mmprojRelativePath.trim().isEmpty()) {
+                    File mmprojFile = requireImportedModel(mmprojRelativePath);
+                    mmprojPath = mmprojFile.getAbsolutePath();
+                }
+                String message = NativeOfflineLlmRuntime.loadModel(modelFile.getAbsolutePath(), normalizedTemplateHint, mmprojPath);
 
                 JSObject result = new JSObject();
                 result.put("message", message);

@@ -71,14 +71,14 @@ public final class NativeOfflineLlmRuntime {
         return nativeGetRuntimeMessage();
     }
 
-    public static String loadModel(String modelPath, String templateHint) {
+    public static String loadModel(String modelPath, String templateHint, String mmprojPath) {
         if (!libraryLoaded) {
             modelLoaded = false;
             loadedModelPath = modelPath;
             return "Native offline JNI scaffold is not loaded yet.";
         }
 
-        String message = nativeLoadModel(modelPath, templateHint);
+        String message = nativeLoadModel(modelPath, templateHint, mmprojPath);
         modelLoaded = message != null && message.toLowerCase().contains("loaded successfully");
         loadedModelPath = modelLoaded ? modelPath : null;
         return message;
@@ -112,7 +112,7 @@ public final class NativeOfflineLlmRuntime {
     private static native String nativeGetBackendName();
     private static native String nativePrepareRuntime(String modelsRoot, String importsRoot);
     private static native String nativeGetRuntimeMessage();
-    private static native String nativeLoadModel(String modelPath, String templateHint);
+    private static native String nativeLoadModel(String modelPath, String templateHint, String mmprojPath);
     private static native String nativeUnloadModel();
     private static native String nativeGenerate(String prompt);
 }

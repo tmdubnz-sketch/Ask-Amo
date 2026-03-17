@@ -137,142 +137,150 @@ export class KnowledgeStoreService {
     const sqlite = await sqlite3InitModule() as unknown as SQLiteModule;
     this.sqlite = sqlite;
 
+    let db: SQLiteDb;
+
     if (Capacitor.isNativePlatform()) {
       // On native Android, use file-based SQLite - persists across cache clears
       // Using relative path with 'c' (create) and 't' (truncate=open existing or create new)
       console.log('[KnowledgeStore] Initializing SQLite on native platform...');
-      this.db = new sqlite.oo1.DB('amo-knowledge.sqlite3', 'ct');
+      db = new sqlite.oo1.DB('amo-knowledge.sqlite3', 'ct');
       console.log('[KnowledgeStore] SQLite DB opened: amo-knowledge.sqlite3');
     } else if (sqlite.oo1.JsStorageDb && isBrowser()) {
       // On web browser, use localStorage-backed SQLite
       console.log('[KnowledgeStore] Using localStorage-backed SQLite (browser)');
-      this.db = new sqlite.oo1.JsStorageDb('amo-knowledge-store');
+      db = new sqlite.oo1.JsStorageDb('amo-knowledge-store');
     } else {
       // Fallback to file-based
       console.log('[KnowledgeStore] Using fallback file-based SQLite');
-      this.db = new sqlite.oo1.DB('/amo-knowledge.sqlite3', 'ct');
+      db = new sqlite.oo1.DB('/amo-knowledge.sqlite3', 'ct');
     }
 
-    this.db.exec(`
-      PRAGMA journal_mode = WAL;
-      PRAGMA synchronous = NORMAL;
-      PRAGMA temp_store = MEMORY;
-      PRAGMA foreign_keys = ON;
+    try {
+      db.exec(`
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+        PRAGMA temp_store = MEMORY;
+        PRAGMA foreign_keys = ON;
 
-      CREATE TABLE IF NOT EXISTS app_meta (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
+        CREATE TABLE IF NOT EXISTS app_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
 
-      CREATE TABLE IF NOT EXISTS knowledge_documents (
-        document_id TEXT PRIMARY KEY,
-        document_name TEXT NOT NULL,
-        asset_kind TEXT NOT NULL,
-        source TEXT NOT NULL,
-        starter_pack_key TEXT,
-        starter_pack_version TEXT,
-        starter_pack_category TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
+        CREATE TABLE IF NOT EXISTS knowledge_documents (
+          document_id TEXT PRIMARY KEY,
+          document_name TEXT NOT NULL,
+          asset_kind TEXT NOT NULL,
+          source TEXT NOT NULL,
+          starter_pack_key TEXT,
+          starter_pack_version TEXT,
+          starter_pack_category TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
 
-      CREATE TABLE IF NOT EXISTS knowledge_chunks (
-        id TEXT PRIMARY KEY,
-        document_id TEXT NOT NULL,
-        document_name TEXT NOT NULL,
-        content TEXT NOT NULL,
-        embedding_json TEXT NOT NULL,
-        metadata_json TEXT NOT NULL,
-        asset_kind TEXT NOT NULL,
-        source TEXT NOT NULL,
-        starter_pack_key TEXT,
-        starter_pack_version TEXT,
-        starter_pack_category TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        FOREIGN KEY (document_id) REFERENCES knowledge_documents(document_id) ON DELETE CASCADE
-      );
+        CREATE TABLE IF NOT EXISTS knowledge_chunks (
+          id TEXT PRIMARY KEY,
+          document_id TEXT NOT NULL,
+          document_name TEXT NOT NULL,
+          content TEXT NOT NULL,
+          embedding_json TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          asset_kind TEXT NOT NULL,
+          source TEXT NOT NULL,
+          starter_pack_key TEXT,
+          starter_pack_version TEXT,
+          starter_pack_category TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (document_id) REFERENCES knowledge_documents(document_id) ON DELETE CASCADE
+        );
 
-      CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document_id
-      ON knowledge_chunks(document_id);
+        CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document_id
+        ON knowledge_chunks(document_id);
 
-      CREATE INDEX IF NOT EXISTS idx_knowledge_documents_updated_at
-      ON knowledge_documents(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_knowledge_documents_updated_at
+        ON knowledge_documents(updated_at DESC);
 
-      CREATE TABLE IF NOT EXISTS conversation_memory (
-        id TEXT PRIMARY KEY,
-        scope TEXT NOT NULL,
-        memory_type TEXT NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        tags_json TEXT NOT NULL,
-        weight REAL NOT NULL DEFAULT 1,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
+        CREATE TABLE IF NOT EXISTS conversation_memory (
+          id TEXT PRIMARY KEY,
+          scope TEXT NOT NULL,
+          memory_type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          tags_json TEXT NOT NULL,
+          weight REAL NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
 
-      CREATE INDEX IF NOT EXISTS idx_conversation_memory_scope
-      ON conversation_memory(scope, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_conversation_memory_scope
+        ON conversation_memory(scope, updated_at DESC);
 
-      CREATE TABLE IF NOT EXISTS memory_summaries (
-        id TEXT PRIMARY KEY,
-        scope TEXT NOT NULL,
-        source_type TEXT NOT NULL,
-        source_id TEXT NOT NULL,
-        summary TEXT NOT NULL,
-        keywords_json TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
+        CREATE TABLE IF NOT EXISTS memory_summaries (
+          id TEXT PRIMARY KEY,
+          scope TEXT NOT NULL,
+          source_type TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          summary TEXT NOT NULL,
+          keywords_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
 
-      CREATE INDEX IF NOT EXISTS idx_memory_summaries_scope
-      ON memory_summaries(scope, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_summaries_scope
+        ON memory_summaries(scope, updated_at DESC);
 
-      CREATE TABLE IF NOT EXISTS tool_registry (
-        tool_id TEXT PRIMARY KEY,
-        display_name TEXT NOT NULL,
-        description TEXT NOT NULL,
-        capability_group TEXT NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        input_schema_json TEXT NOT NULL,
-        policy_json TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
+        CREATE TABLE IF NOT EXISTS tool_registry (
+          tool_id TEXT PRIMARY KEY,
+          display_name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          capability_group TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          input_schema_json TEXT NOT NULL,
+          policy_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
 
-      CREATE TABLE IF NOT EXISTS seed_packs (
-        pack_id TEXT PRIMARY KEY,
-        pack_name TEXT NOT NULL,
-        pack_type TEXT NOT NULL,
-        version TEXT NOT NULL,
-        description TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-    `);
+        CREATE TABLE IF NOT EXISTS seed_packs (
+          pack_id TEXT PRIMARY KEY,
+          pack_name TEXT NOT NULL,
+          pack_type TEXT NOT NULL,
+          version TEXT NOT NULL,
+          description TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `);
 
-    this.db.exec({
-      sql: `
-        INSERT INTO app_meta(key, value)
-        VALUES('schema_version', ?1)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-      `,
-      bind: [String(SCHEMA_VERSION)],
-    });
+      db.exec({
+        sql: `
+          INSERT INTO app_meta(key, value)
+          VALUES('schema_version', ?1)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `,
+        bind: [String(SCHEMA_VERSION)],
+      });
 
-    await this.migrateLegacyVectors();
-    this.seedDefaultToolRegistry();
-    this.seedDefaultKnowledgePacks();
+      await this.migrateLegacyVectors(db);
+      this.seedDefaultToolRegistry(db);
+      this.seedDefaultKnowledgePacks(db);
+
+      this.db = db;
+    } catch (error) {
+      throw error;
+    }
   }
 
-  private async migrateLegacyVectors(): Promise<void> {
-    if (!isBrowser() || !this.db) {
+  private async migrateLegacyVectors(db: SQLiteDb): Promise<void> {
+    if (!isBrowser()) {
       return;
     }
 
-    const alreadyMigrated = this.db.selectObjects<{ value: string }>(
+    const alreadyMigrated = db.selectObjects<{ value: string }>(
       `SELECT value FROM app_meta WHERE key = 'legacy_vector_db_migrated'`
     )[0]?.value;
 
@@ -282,7 +290,7 @@ export class KnowledgeStoreService {
 
     const legacyRaw = window.localStorage.getItem(LEGACY_VECTOR_STORAGE_KEY);
     if (!legacyRaw) {
-      this.markLegacyMigrationComplete();
+      this.markLegacyMigrationComplete(db);
       return;
     }
 
@@ -297,15 +305,15 @@ export class KnowledgeStoreService {
 
     if (legacyDocs.length === 0) {
       window.localStorage.removeItem(LEGACY_VECTOR_STORAGE_KEY);
-      this.markLegacyMigrationComplete();
+      this.markLegacyMigrationComplete(db);
       return;
     }
 
     const now = Date.now();
-    this.db.transaction(() => {
+    db.transaction(() => {
       for (const doc of legacyDocs) {
         const metadata = doc.metadata || {};
-        this.db!.exec({
+        db.exec({
           sql: `
             INSERT INTO knowledge_documents (
               document_id, document_name, asset_kind, source,
@@ -334,7 +342,7 @@ export class KnowledgeStoreService {
           ],
         });
 
-        this.db!.exec({
+        db.exec({
           sql: `
             INSERT INTO knowledge_chunks (
               id, document_id, document_name, content, embedding_json, metadata_json,
@@ -367,11 +375,11 @@ export class KnowledgeStoreService {
     });
 
     window.localStorage.removeItem(LEGACY_VECTOR_STORAGE_KEY);
-    this.markLegacyMigrationComplete();
+    this.markLegacyMigrationComplete(db);
   }
 
-  private markLegacyMigrationComplete(): void {
-    this.db?.exec({
+  private markLegacyMigrationComplete(db: SQLiteDb): void {
+    db.exec({
       sql: `
         INSERT INTO app_meta(key, value)
         VALUES('legacy_vector_db_migrated', 'true')
@@ -380,7 +388,7 @@ export class KnowledgeStoreService {
     });
   }
 
-  private seedDefaultToolRegistry(): void {
+  private seedDefaultToolRegistry(db: SQLiteDb): void {
     const now = Date.now();
     const defaultTools = [
       {
@@ -457,9 +465,9 @@ export class KnowledgeStoreService {
        },
     ];
 
-    this.db!.transaction(() => {
+    db.transaction(() => {
       for (const tool of defaultTools) {
-        this.db!.exec({
+        db.exec({
           sql: `
             INSERT INTO tool_registry (
               tool_id, display_name, description, capability_group, enabled,
@@ -488,7 +496,7 @@ export class KnowledgeStoreService {
     });
   }
 
-  private seedDefaultKnowledgePacks(): void {
+  private seedDefaultKnowledgePacks(db: SQLiteDb): void {
     const now = Date.now();
     const packs = [
       {
@@ -519,9 +527,9 @@ export class KnowledgeStoreService {
       },
     ];
 
-    this.db!.transaction(() => {
+    db.transaction(() => {
       for (const pack of packs) {
-        this.db!.exec({
+        db.exec({
           sql: `
             INSERT INTO seed_packs (
               pack_id, pack_name, pack_type, version, description,

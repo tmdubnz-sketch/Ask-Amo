@@ -3,11 +3,14 @@ cmake_minimum_required(VERSION 3.22.1)
 project(native_offline_llama)
 
 set(LLAMA_CPP_VENDOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp)
+
+# Force disable vendor - header conflicts in bundled llama.cpp prevent building
 set(LLAMA_CPP_VENDOR_READY FALSE)
 
-if(EXISTS ${LLAMA_CPP_VENDOR_DIR}/src/llama.cpp AND EXISTS ${LLAMA_CPP_VENDOR_DIR}/include/llama.h)
-    set(LLAMA_CPP_VENDOR_READY TRUE)
-endif()
+# Auto-detection disabled - re-enable once llama.cpp headers are fixed
+# if(EXISTS ${LLAMA_CPP_VENDOR_DIR}/src/llama.cpp AND EXISTS ${LLAMA_CPP_VENDOR_DIR}/include/llama.h)
+#     set(LLAMA_CPP_VENDOR_READY TRUE)
+# endif()
 
 if(LLAMA_CPP_VENDOR_READY)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
