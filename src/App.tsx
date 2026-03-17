@@ -573,17 +573,18 @@ export default function App({ ready = true }: AppProps) {
   const [toolRegistryRows, setToolRegistryRows] = useState<ToolRegistryRow[]>([]);
   const [seedPackRows, setSeedPackRows] = useState<SeedPackRow[]>([]);
 
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const docInputRef = useRef<HTMLInputElement>(null);
-  const skillInputRef = useRef<HTMLInputElement>(null);
-  const inputRef = useRef(input);
-  const isVoiceModeRef = useRef(isVoiceMode);
-  const activeRequestIdRef = useRef(0);
-  const canceledRequestIdsRef = useRef(new Set<number>());
-  const activeAssistantMessageIdRef = useRef<string | null>(null);
+   const chatContainerRef = useRef<HTMLDivElement>(null);
+   const messagesEndRef = useRef<HTMLDivElement>(null);
+   const textareaRef = useRef<HTMLTextAreaElement>(null);
+   const fileInputRef = useRef<HTMLInputElement>(null);
+   const docInputRef = useRef<HTMLInputElement>(null);
+   const skillInputRef = useRef<HTMLInputElement>(null);
+   const inputRef = useRef(input);
+   const isVoiceModeRef = useRef(isVoiceMode);
+   const activeRequestIdRef = useRef(0);
+   const canceledRequestIdsRef = useRef(new Set<number>());
+   const activeAssistantMessageIdRef = useRef<string | null>(null);
+   const voiceRestartTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => { inputRef.current = input; }, [input]);
   useEffect(() => { isVoiceModeRef.current = isVoiceMode; }, [isVoiceMode]);
@@ -1778,59 +1779,82 @@ export default function App({ ready = true }: AppProps) {
     { id: 'cognition', label: 'Cognition', icon: Brain },
   ];
 
-  const toggleListening = async () => {
-    if (isListening) {
-      audioCaptureService.stop();
-      setIsListening(false);
-    } else {
-      audioCaptureService.setCallbacks(
-        (text: string, isFinal: boolean) => {
-          if (!isFinal) {
-            console.log('[Voice] Interim:', text);
-            return;
-          }
-          console.log('[Voice] Final:', text);
-          if (!text.trim()) {
-            setIsListening(false);
-            return;
-          }
-          inputRef.current = text;
-          setInput(text);
-          requestAnimationFrame(() => {
-            requestAnimationFrame(async () => {
-              await handleSend();
-              if (voiceContinuous && !isLoading) {
-                setTimeout(() => {
-                  setIsListening(true);
-                  void audioCaptureService.start();
-                }, 800);
-              }
-            });
-          });
-          if (!voiceContinuous) {
-            setIsListening(false);
-          }
-        },
-        (error: string) => {
-          console.error('[Voice] Error:', error);
-          setError(error);
-          setIsListening(false);
-        }
-      );
-      setIsListening(true);
-      await audioCaptureService.start();
-    }
-  };
+   const toggleListening = async () => {
+     if (isListening) {
+       audioCaptureService.stop();
+       setIsListening(false);
+       // Clear any pending voice restart timers when stopping
+       if (voiceRestartTimerRef.current) {
+         clearTimeout(voiceRestartTimerRef.current);
+         voiceRestartTimerRef.current = null;
+       }
+     } else {
+       audioCaptureService.setCallbacks(
+         (text: string, isFinal: boolean) => {
+           if (!isFinal) {
+             console.log('[Voice] Interim:', text);
+             return;
+           }
+           console.log('[Voice] Final:', text);
+           if (!text.trim()) {
+             setIsListening(false);
+             return;
+           }
+           inputRef.current = text;
+           setInput(text);
+           requestAnimationFrame(() => {
+             requestAnimationFrame(async () => {
+               await handleSend();
+               // Only restart if voiceContinuous is still enabled and not loading
+               if (voiceContinuous && !isLoading) {
+                 // Clear any existing timer before setting a new one to prevent duplicates
+                 if (voiceRestartTimerRef.current) {
+                   clearTimeout(voiceRestartTimerRef.current);
+                 }
+                 voiceRestartTimerRef.current = setTimeout(() => {
+                   setIsListening(true);
+                   void audioCaptureService.start();
+                   voiceRestartTimerRef.current = null;
+                 }, 800);
+               }
+             });
+           });
+           if (!voiceContinuous) {
+             setIsListening(false);
+           }
+         },
+         (error: string) => {
+           console.error('[Voice] Error:', error);
+           setError(error);
+           setIsListening(false);
+         }
+       );
+       setIsListening(true);
+       await audioCaptureService.start();
+     }
+   };
 
-  useEffect(() => {
-    if (!isLoading && voiceContinuous && !isListening) {
-      const timer = setTimeout(() => {
-        setIsListening(true);
-        void audioCaptureService.start();
-      }, 600);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading, voiceContinuous, isListening]);
+   useEffect(() => {
+     // Auto-restart voice listening when loading finishes and voiceContinuous is enabled
+     if (!isLoading && voiceContinuous && !isListening) {
+       // Clear any existing timer before setting a new one
+       if (voiceRestartTimerRef.current) {
+         clearTimeout(voiceRestartTimerRef.current);
+       }
+       voiceRestartTimerRef.current = setTimeout(() => {
+         setIsListening(true);
+         void audioCaptureService.start();
+         voiceRestartTimerRef.current = null;
+       }, 600);
+       return () => {
+         // Cleanup: cancel the timer if component unmounts or dependencies change
+         if (voiceRestartTimerRef.current) {
+           clearTimeout(voiceRestartTimerRef.current);
+           voiceRestartTimerRef.current = null;
+         }
+       };
+     }
+   }, [isLoading, voiceContinuous, isListening]);
 
   const handleCopy = (text: string) => navigator.clipboard.writeText(text);
 
