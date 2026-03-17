@@ -1236,24 +1236,23 @@ export default function App({ ready = true }: AppProps) {
        
        const pendingImage = selectedImage;
          
-       // Auto-switch to vision model if image is attached and current model doesn't support vision
-       if (pendingImage && !selectedModel.isVision) {
-         // Prefer WebLLM vision (local/offline) if loaded, then cloud with vision
-         const webllmVision = loadedModelId ? AVAILABLE_MODELS.find(m => m.isVision && m.family === 'webllm' && m.id === loadedModelId) : null;
-         const geminiVision = AVAILABLE_MODELS.find(m => m.isVision && m.family === 'gemini');
-         const cloudVision = AVAILABLE_MODELS.find(m => m.isVision && m.isCloud);
-         const visionModel = webllmVision || geminiVision || cloudVision;
-         if (visionModel) {
-           setSelectedModel(visionModel);
-         }
-       }
-       
-        // For native/webllm vision models, embed image in prompt
-        let visionPromptSuffix = '';
-        if (pendingImage && selectedModel.isVision && (selectedModel.family === 'native' || selectedModel.family === 'webllm')) {
-          // Format for llama.cpp vision: embed base64 image in prompt
-          visionPromptSuffix = `\n\n<image>${pendingImage}</image>`;
+        // Auto-switch to vision model if image is attached and current model doesn't support vision
+        if (pendingImage && !selectedModel.isVision) {
+          // Prefer WebLLM vision (local/offline) if loaded, then cloud with vision
+          const webllmVision = loadedModelId ? AVAILABLE_MODELS.find(m => m.isVision && m.family === 'webllm' && m.id === loadedModelId) : null;
+          const geminiVision = AVAILABLE_MODELS.find(m => m.isVision && m.family === 'gemini');
+          const cloudVision = AVAILABLE_MODELS.find(m => m.isVision && m.isCloud);
+          const visionModel = webllmVision || geminiVision || cloudVision;
+          if (visionModel) {
+            setSelectedModel(visionModel);
+          }
         }
+        
+         // For native vision models, embed image in prompt (llama.cpp vision format)
+         let visionPromptSuffix = '';
+         if (pendingImage && selectedModel.isVision && selectedModel.family === 'native') {
+           visionPromptSuffix = `\n\n<image>${pendingImage}</image>`;
+         }
      
      const requestId = activeRequestIdRef.current + 1;
      activeRequestIdRef.current = requestId;
@@ -1455,67 +1454,76 @@ export default function App({ ready = true }: AppProps) {
 
          const runtimeModel = selectedModel;
 
-         let reply = '';
-          if (runtimeModel.isCloud) {
-            const cloudMessages = [...history, { role: 'user' as const, content: userPrompt }];
-            const handleCloudUpdate = (text: string) => {
-              if (isRequestCanceled(requestId)) return;
-              updateMessage(assistantId, text, true);
-            };
-
-           switch (runtimeModel.family) {
-             case 'groq':
-               reply = await groqService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
-                 deepThink: isDeepThinkEnabled,
-                 webContext: webSearchContext,
-               });
-               break;
-             case 'openrouter':
-               reply = await openrouterService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
-                 deepThink: isDeepThinkEnabled,
-                 webContext: webSearchContext,
-               });
-               break;
-             case 'openai':
-               reply = await openaiService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
-                 deepThink: isDeepThinkEnabled,
-                 webContext: webSearchContext,
-               });
-               break;
-              case 'gemini':
-                reply = await geminiService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
-                  deepThink: isDeepThinkEnabled,
-                  webContext: webSearchContext,
-                });
-                break;
-              case 'mistral':
-                reply = await mistralService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
-                  deepThink: isDeepThinkEnabled,
-                  webContext: webSearchContext,
-                });
-                break;
-              default:
-                throw new Error(`Unsupported cloud model family: ${runtimeModel.family}`);
-            }
-           } else if (runtimeModel.family === 'webllm') {
-             // WebLLM - browser-based offline model via WebGPU
-             const webllmMessages = [
-               { role: 'system' as const, content: 'You are Amo, a grounded New Zealand assistant.' },
-               ...history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-               { role: 'user' as const, content: userPrompt }
-             ];
-             
-             const handleWebLLMUpdate = (text: string) => {
+          let reply = '';
+           if (runtimeModel.isCloud) {
+             // Build cloud messages with vision support
+             const userMessage: any = { role: 'user' as const, content: userPrompt };
+             if (pendingImage && runtimeModel.isVision) {
+               userMessage.image = pendingImage;
+             }
+             const cloudMessages = [...history, userMessage];
+             const handleCloudUpdate = (text: string) => {
                if (isRequestCanceled(requestId)) return;
                updateMessage(assistantId, text, true);
              };
-             
-             try {
-               reply = await webLlmService.generate(webllmMessages, handleWebLLMUpdate);
-             } catch (e: any) {
-               // If WebLLM fails, fall back to error message
-               reply = `WebLLM error: ${e.message}. Try a different model or ensure WebGPU is available.`;
+
+            switch (runtimeModel.family) {
+              case 'groq':
+                reply = await groqService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
+                  deepThink: isDeepThinkEnabled,
+                  webContext: webSearchContext,
+                });
+                break;
+              case 'openrouter':
+                reply = await openrouterService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
+                  deepThink: isDeepThinkEnabled,
+                  webContext: webSearchContext,
+                });
+                break;
+              case 'openai':
+                reply = await openaiService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
+                  deepThink: isDeepThinkEnabled,
+                  webContext: webSearchContext,
+                });
+                break;
+               case 'gemini':
+                 reply = await geminiService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
+                   deepThink: isDeepThinkEnabled,
+                   webContext: webSearchContext,
+                 });
+                 break;
+               case 'mistral':
+                 reply = await mistralService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
+                   deepThink: isDeepThinkEnabled,
+                   webContext: webSearchContext,
+                 });
+                 break;
+               default:
+                 throw new Error(`Unsupported cloud model family: ${runtimeModel.family}`);
              }
+            } else if (runtimeModel.family === 'webllm') {
+              // WebLLM - browser-based offline model via WebGPU
+              const webllmUserMessage: any = { role: 'user' as const, content: userPrompt };
+              if (pendingImage && runtimeModel.isVision) {
+                webllmUserMessage.image = pendingImage;
+              }
+              const webllmMessages = [
+                { role: 'system' as const, content: 'You are Amo, a grounded New Zealand assistant.' },
+                ...history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+                webllmUserMessage
+              ];
+              
+              const handleWebLLMUpdate = (text: string) => {
+                if (isRequestCanceled(requestId)) return;
+                updateMessage(assistantId, text, true);
+              };
+              
+              try {
+                reply = await webLlmService.generate(webllmMessages, handleWebLLMUpdate);
+              } catch (e: any) {
+                // If WebLLM fails, fall back to error message
+                reply = `WebLLM error: ${e.message}. Try a different model or ensure WebGPU is available.`;
+              }
            } else {
               // Native offline model (llama.cpp via Android JNI)
               const finalPrompt = userPrompt + (visionPromptSuffix || '');
