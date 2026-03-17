@@ -13,11 +13,18 @@ export interface DownloadableModel {
 
 export const AVAILABLE_OFFLINE_MODELS: DownloadableModel[] = [
   {
-    id: 'phi-3.5-mini',
-    name: 'Phi-3.5 Mini',
-    description: 'Best balance of speed and capability for mobile',
-    url: 'https://huggingface.co/microsoft/Phi-3.5-mini-instruct-gguf/resolve/main/Phi-3.5-mini-instruct.Q4_K_M.gguf',
-    size: '~2.3 GB',
+    id: 'llama-3.2-1b',
+    name: 'Llama 3.2 1B',
+    description: 'Latest Llama - small and fast',
+    url: 'https://huggingface.co/unsloth/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf',
+    size: '~700 MB',
+  },
+  {
+    id: 'llama-3.2-3b',
+    name: 'Llama 3.2 3B',
+    description: 'Latest Llama - best quality',
+    url: 'https://huggingface.co/unsloth/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+    size: '~1.9 GB',
   },
   {
     id: 'tiny-llama',
@@ -27,18 +34,11 @@ export const AVAILABLE_OFFLINE_MODELS: DownloadableModel[] = [
     size: '~650 MB',
   },
   {
-    id: 'gemma-2b',
-    name: 'Gemma 2B',
-    description: 'Google quality, moderate size',
-    url: 'https://huggingface.co/google/gemma-2-2b-it-gguf/resolve/main/gemma-2-2b-it.Q4_K_M.gguf',
-    size: '~1.6 GB',
-  },
-  {
-    id: 'qwen-1.8',
-    name: 'Qwen 1.8B',
-    description: 'Excellent multilingual support',
-    url: 'https://huggingface.co/Qwen/Qwen1.5-1.8B-Chat-GGUF/resolve/main/Qwen1.5-1.8B-Chat.Q4_K_M.gguf',
-    size: '~1.1 GB',
+    id: 'phi-3.5-mini',
+    name: 'Phi-3.5 Mini',
+    description: 'Microsoft - best balance for mobile',
+    url: 'https://huggingface.co/dabr1/Phi-3.5-mini-instruct_Uncensored-Q4_0_4_8.gguf',
+    size: '~2.3 GB',
   },
 ];
 

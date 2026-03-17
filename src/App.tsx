@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
+import { Browser } from '@capacitor/browser';
 import { ErrorBoundary, DefaultFallback } from './components/ErrorBoundary';
 import { performanceMonitoringService, usePerformanceMonitoring } from './services/performanceMonitoringService';
 import { 
@@ -803,6 +804,15 @@ export default function App({ ready = true }: AppProps) {
     }
   };
 
+  const handleOpenInChrome = async () => {
+    try {
+      const currentUrl = window.location.href;
+      await Browser.open({ url: currentUrl, windowName: '_blank' });
+    } catch (e: any) {
+      setError('Failed to open in Chrome.');
+    }
+  };
+
   const handleExportHistory = () => {
     const data = JSON.stringify(chats, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
@@ -1379,6 +1389,12 @@ export default function App({ ready = true }: AppProps) {
               setError(getErrorMessage(nativeError, 'Select or download a GGUF before using the native runtime.'));
               return;
             }
+          }
+
+          // Check if WebLLM is ready - it must be loaded first
+          if (webllmSelected && loadedModelId !== selectedModel.id) {
+            setError('WebLLM model not loaded. Please tap the download button to load the model first.');
+            return;
           }
 
           // Check if model is ready - WebLLM is ready if loaded, cloud needs API key
@@ -2011,6 +2027,7 @@ export default function App({ ready = true }: AppProps) {
           onToggleDeepThink={() => setIsDeepThinkEnabled(!isDeepThinkEnabled)}
           onClearMemory={handleClearMemory}
           onExportHistory={handleExportHistory}
+          onOpenInChrome={handleOpenInChrome}
           appVersion="1.0.0"
         />
 

@@ -23,6 +23,7 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { AMO_COMMANDS, AMO_PROMPT_TEMPLATES } from '../data/amoHelpData';
@@ -110,6 +111,7 @@ interface SidebarProps {
   onToggleDeepThink: () => void;
   onClearMemory: () => void;
   onExportHistory: () => void;
+  onOpenInChrome: () => void;
   appVersion?: string;
 }
 
@@ -548,6 +550,7 @@ function SettingsPanel(props: SidebarProps) {
           <ActionItem icon={Trash2} label="Clear all memory" description="Wipe brain notes and summaries" onClick={props.onClearMemory} danger />
           <ActionItem icon={Download} label="Export chat history" description="Save all conversations to file" onClick={props.onExportHistory} />
           <ActionItem icon={RefreshCw} label="Refresh news" description="Fetch latest NZ and world news" onClick={props.onRefreshNews} />
+          <ActionItem icon={ExternalLink} label="Open in Chrome" description="Use Chrome instead of WebView for better WebGPU" onClick={props.onOpenInChrome} />
         </div>
         <SectionLabel>About</SectionLabel>
         <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-1">

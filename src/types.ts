@@ -126,11 +126,11 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
   },
   {
     id: "Llama-3.2-3B-Instruct-webllm",
-    name: "WebLLM Vision",
-    description: "Llama 3.2 Vision 3B - runs in browser via WebGPU. Supports images.",
-    size: "~2GB",
+    name: "WebLLM (Phi-3.5)",
+    description: "Phi-3.5 Mini - runs in browser via WebGPU. Smaller and faster.",
+    size: "~1GB",
     family: 'webllm',
     isCloud: false,
-    isVision: true
+    isVision: false
   }
 ];

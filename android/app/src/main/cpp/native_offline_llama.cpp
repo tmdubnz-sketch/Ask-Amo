@@ -63,7 +63,6 @@ bool g_model_loaded = false;
 llama_model * g_model = nullptr;
 llama_context * g_ctx = nullptr;
 llama_sampler * g_sampler = nullptr;
-const llama_vocab * g_vocab = nullptr;
 #endif
 }
 
@@ -99,11 +98,9 @@ void unload_model_locked() {
     }
 
     if (g_model != nullptr) {
-        llama_model_free(g_model);
+        llama_free_model(g_model);
         g_model = nullptr;
     }
-
-    g_vocab = nullptr;
 }
 
 void ensure_backend_initialized_locked() {
@@ -124,17 +121,12 @@ std::string apply_template_locked(const std::string & prompt) {
         return prompt;
     }
 
-    const char * builtin_template = llama_model_chat_template(g_model, nullptr);
-    if (builtin_template == nullptr || builtin_template[0] == '\0') {
-        if (g_template_hint == "llama" || g_template_hint == "qwen" || g_template_hint == "smollm" || g_template_hint == "generic") {
-            return "<|system|>\nYou are Amo, a grounded New Zealand Maori assistant.\n<|user|>\n" + prompt + "\n<|assistant|>\n";
-        }
+    if (g_template_hint == "llama" || g_template_hint == "qwen" || g_template_hint == "smollm" || g_template_hint == "generic") {
+        return "<|system|>\nYou are Amo, a grounded New Zealand Maori assistant.\n<|user|>\n" + prompt + "\n<|assistant|>\n";
+    }
 
-        if (g_template_hint == "gemma") {
-            return "<start_of_turn>user\n" + prompt + "<end_of_turn>\n<start_of_turn>model\n";
-        }
-
-        return prompt;
+    if (g_template_hint == "gemma") {
+        return "<start_of_turn>user\n" + prompt + "<end_of_turn>\n<start_of_turn>model\n";
     }
 
     llama_chat_message message {
@@ -142,14 +134,15 @@ std::string apply_template_locked(const std::string & prompt) {
         prompt.c_str()
     };
 
-    int32_t required = llama_chat_apply_template(builtin_template, &message, 1, true, nullptr, 0);
+    int32_t required = llama_chat_apply_template(g_model, nullptr, &message, 1, true, nullptr, 0);
     if (required <= 0) {
         return prompt;
     }
 
     std::vector<char> buffer(static_cast<size_t>(required) + 1, '\0');
     int32_t written = llama_chat_apply_template(
-        builtin_template,
+        g_model,
+        nullptr,
         &message,
         1,
         true,
@@ -165,12 +158,12 @@ std::string apply_template_locked(const std::string & prompt) {
 }
 
 bool tokenize_prompt_locked(const std::string & prompt, std::vector<llama_token> & tokens, std::string & error_message) {
-    if (g_vocab == nullptr) {
-        error_message = "Native vocabulary is not ready.";
+    if (g_model == nullptr) {
+        error_message = "Native model is not ready.";
         return false;
     }
 
-    int32_t required = -llama_tokenize(g_vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()), nullptr, 0, true, true);
+    int32_t required = -llama_tokenize(g_model, prompt.c_str(), static_cast<int32_t>(prompt.size()), nullptr, 0, true, true);
     if (required <= 0) {
         error_message = "Failed to tokenize prompt.";
         return false;
@@ -178,7 +171,7 @@ bool tokenize_prompt_locked(const std::string & prompt, std::vector<llama_token>
 
     tokens.resize(static_cast<size_t>(required));
     int32_t written = llama_tokenize(
-        g_vocab,
+        g_model,
         prompt.c_str(),
         static_cast<int32_t>(prompt.size()),
         tokens.data(),
@@ -205,12 +198,12 @@ bool tokenize_prompt_locked(const std::string & prompt, std::vector<llama_token>
 }
 
 std::string token_to_piece_locked(llama_token token) {
-    if (g_vocab == nullptr) {
+    if (g_model == nullptr) {
         return "";
     }
 
     char buffer[kTokenPieceBufferSize];
-    int32_t size = llama_token_to_piece(g_vocab, token, buffer, kTokenPieceBufferSize, 0, true);
+    int32_t size = llama_token_to_piece(g_model, token, buffer, kTokenPieceBufferSize, 0, true);
     if (size < 0) {
         return "";
     }
@@ -264,7 +257,8 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeLoadModel(
     JNIEnv * env,
     jclass /* clazz */,
     jstring modelPath,
-    jstring templateHint
+    jstring templateHint,
+    jstring mmprojPath
 ) {
     std::lock_guard<std::mutex> lock(g_runtime_mutex);
 
@@ -274,6 +268,7 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeLoadModel(
 #else
     const std::string model_path = toStdString(env, modelPath);
     const std::string template_hint = toStdString(env, templateHint);
+    const std::string mmproj_path = mmprojPath ? toStdString(env, mmprojPath) : "";
 
     if (model_path.empty()) {
         g_runtime_message = "Model path is required.";
@@ -281,7 +276,7 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeLoadModel(
         return env->NewStringUTF(g_runtime_message.c_str());
     }
 
-     log_debug("loadModel:start path=%s template=%s", model_path.c_str(), template_hint.c_str());
+    log_debug("loadModel:start path=%s template=%s mmproj=%s", model_path.c_str(), template_hint.c_str(), mmproj_path.c_str());
     ensure_backend_initialized_locked();
     unload_model_locked();
 
@@ -289,15 +284,30 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeLoadModel(
     model_params.n_gpu_layers = 0;
     model_params.use_mmap = false;
 
-    g_model = llama_model_load_from_file(model_path.c_str(), model_params);
+    g_model = llama_load_model_from_file(model_path.c_str(), model_params);
     if (g_model == nullptr) {
         g_runtime_message = "Failed to load GGUF model.";
-        log_error("loadModel:error llama_model_load_from_file failed");
+        log_error("loadModel:error llama_load_model_from_file failed");
         return env->NewStringUTF(g_runtime_message.c_str());
     }
 
+    // mmproj loading disabled - llama_model_load_mmproj not available in current llama.cpp version
+    // Will be enabled when llama.cpp is updated to support multimodal
+    /*
+    if (!mmproj_path.empty()) {
+        if (llama_model_load_mmproj(g_model, mmproj_path.c_str()) != 0) {
+            g_runtime_message = "Failed to load MMProj file.";
+            log_error("loadModel:error loading mmproj file: %s", mmproj_path.c_str());
+            llama_model_free(g_model);
+            g_model = nullptr;
+            return env->NewStringUTF(g_runtime_message.c_str());
+        }
+        log_debug("loadModel:mmproj loaded successfully: %s", mmproj_path.c_str());
+    }
+    */
+
     llama_context_params context_params = llama_context_default_params();
-    int32_t trained_ctx = llama_model_n_ctx_train(g_model);
+    int32_t trained_ctx = llama_n_ctx_train(g_model);
     if (trained_ctx <= 0) {
         trained_ctx = kMaxContextTokens;
     }
@@ -307,18 +317,17 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeLoadModel(
     context_params.n_ubatch = 1;
     context_params.no_perf = true;
 
-    g_ctx = llama_init_from_model(g_model, context_params);
+    g_ctx = llama_new_context_with_model(g_model, context_params);
     if (g_ctx == nullptr) {
-        llama_model_free(g_model);
+        llama_free_model(g_model);
         g_model = nullptr;
         g_runtime_message = "Failed to create llama.cpp context.";
-        log_error("loadModel:error llama_init_from_model failed");
+        log_error("loadModel:error llama_new_context_with_model failed");
         return env->NewStringUTF(g_runtime_message.c_str());
     }
 
     int32_t thread_count = static_cast<int32_t>(std::max(2u, std::thread::hardware_concurrency() > 0 ? std::min(2u, std::thread::hardware_concurrency()) : 2u));
     llama_set_n_threads(g_ctx, thread_count, thread_count);
-    g_vocab = llama_model_get_vocab(g_model);
 
     auto sampler_params = llama_sampler_chain_default_params();
     sampler_params.no_perf = true;
@@ -332,9 +341,9 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeLoadModel(
     g_template_hint = template_hint.empty() ? "generic" : template_hint;
     g_model_loaded = true;
     g_runtime_message = "Native llama.cpp model loaded successfully.";
-     log_debug("loadModel:done ctx=%d batch=%d ubatch=%d threads=%d mmap=%s",
-         context_params.n_ctx, context_params.n_batch, context_params.n_ubatch, thread_count,
-         model_params.use_mmap ? "true" : "false");
+    log_debug("loadModel:done ctx=%d batch=%d ubatch=%d threads=%d mmap=%s",
+        context_params.n_ctx, context_params.n_batch, context_params.n_ubatch, thread_count,
+        model_params.use_mmap ? "true" : "false");
     return env->NewStringUTF(g_runtime_message.c_str());
 #endif
 }
@@ -381,9 +390,6 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
     }
 
      log_debug("generate:prompt_chars=%zu", user_prompt.size());
-    log_debug("generate:clear_memory:start");
-    llama_memory_clear(llama_get_memory(g_ctx), true);
-    log_debug("generate:clear_memory:done");
     llama_sampler_reset(g_sampler);
 
     std::string formatted_prompt = apply_template_locked(user_prompt);
@@ -410,7 +416,7 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
 
         llama_token decoder_start = llama_model_decoder_start_token(g_model);
         if (decoder_start == LLAMA_TOKEN_NULL) {
-            decoder_start = llama_vocab_bos(g_vocab);
+            decoder_start = llama_token_bos(g_model);
         }
 
         prompt_tokens.clear();
@@ -462,7 +468,7 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
         if (generated_tokens == 0) {
              log_debug("generate:first_token=%d", token);
         }
-        if (llama_vocab_is_eog(g_vocab, token)) {
+        if (token == llama_token_eos(g_model)) {
              log_debug("generate:eog token=%d", token);
             break;
         }

@@ -18,6 +18,9 @@ android {
         buildConfig = true
     }
     defaultConfig {
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
         applicationId = "com.askamo.mobile"
         minSdkVersion = rootProject.ext.minSdkVersion
         targetSdkVersion = rootProject.ext.targetSdkVersion
