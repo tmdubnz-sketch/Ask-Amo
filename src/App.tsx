@@ -1341,8 +1341,25 @@ export default function App({ ready = true }: AppProps) {
           if (selectedModel.isCloud) {
             let result = '';
             const handler = (t: string) => { result = t; };
-            if (selectedModel.family === 'groq') {
-              result = await groqService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+            
+            switch (selectedModel.family) {
+              case 'groq':
+                result = await groqService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                break;
+              case 'openai':
+                result = await openaiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                break;
+              case 'gemini':
+                result = await geminiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                break;
+              case 'openrouter':
+                result = await openrouterService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                break;
+              case 'mistral':
+                result = await mistralService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
+                break;
+              default:
+                throw new Error(`Unsupported cloud model family: ${selectedModel.family}`);
             }
             return result;
           }

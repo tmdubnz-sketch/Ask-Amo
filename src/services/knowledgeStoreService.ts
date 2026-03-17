@@ -124,7 +124,10 @@ export class KnowledgeStoreService {
     }
 
     if (!this.initPromise) {
-      this.initPromise = this.initializeInternal();
+      this.initPromise = this.initializeInternal().catch((err) => {
+        this.initPromise = null;
+        throw err;
+      });
     }
 
     await this.initPromise;
