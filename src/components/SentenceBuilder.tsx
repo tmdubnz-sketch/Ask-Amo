@@ -29,7 +29,8 @@ import {
   TrendingUp,
   Hash,
   Type,
-  MessageSquare
+  MessageSquare,
+  HelpCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -41,6 +42,7 @@ export function SentenceBuilder({ onClose }: SentenceBuilderProps) {
   const [activeTab, setActiveTab] = useState<'generator' | 'templates' | 'word-tables' | 'rules' | 'stats'>('generator');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
   
   // Generator state
   const [generationRequest, setGenerationRequest] = useState<SentenceGenerationRequest>({
@@ -174,11 +176,20 @@ export function SentenceBuilder({ onClose }: SentenceBuilderProps) {
           <Brain className="w-4 h-4 text-[#ff4e00]" />
           <h2 className="text-sm font-semibold text-white/90">Sentence Builder</h2>
         </div>
-        {onClose && (
-          <button onClick={onClose} className="text-white/40 hover:text-white/60 transition-colors">
-            <XCircle className="w-4 h-4" />
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setShowHelp(!showHelp)}
+            className="text-white/40 hover:text-white/60 transition-colors"
+            title="How to use Sentence Builder"
+          >
+            <HelpCircle className="w-4 h-4" />
           </button>
-        )}
+          {onClose && (
+            <button onClick={onClose} className="text-white/40 hover:text-white/60 transition-colors">
+              <XCircle className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -208,7 +219,34 @@ export function SentenceBuilder({ onClose }: SentenceBuilderProps) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-        {status && (
+      {/* Help Section */}
+      {showHelp && (
+        <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
+          <h3 className="text-sm font-semibold text-white/90 mb-3">How to Use Sentence Builder</h3>
+          <div className="space-y-3 text-xs text-white/70">
+            <div>
+              <strong className="text-white/80">1. Generator:</strong> Create sentences by describing what you want to say (e.g., "I need to order coffee"). The AI will generate variations.
+            </div>
+            <div>
+              <strong className="text-white/80">2. Templates:</strong> Create sentence patterns with placeholders (e.g., "I want to [action] a [item]"). These can be reused with different words.
+            </div>
+            <div>
+              <strong className="text-white/80">3. Word Tables:</strong> Organize words by category (verbs, nouns, adjectives). Use vocabulary from the Vocabulary Builder!
+            </div>
+            <div>
+              <strong className="text-white/80">4. Rules:</strong> Set grammar and style rules (e.g., "always use formal tone" or "avoid slang").
+            </div>
+            <div>
+              <strong className="text-white/80">5. Statistics:</strong> Track your sentence diversity and usage patterns.
+            </div>
+            <div className="mt-3 pt-3 border-t border-white/10">
+              <strong>💡 Tip:</strong> Combine with Vocabulary Builder words to create personalized practice sentences!
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status && (
           <div className={cn(
             'mb-4 p-3 rounded-lg text-xs',
             status.includes('Failed') ? 'bg-red-500/10 text-red-300 border border-red-500/20' :

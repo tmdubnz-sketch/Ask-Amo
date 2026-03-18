@@ -152,6 +152,7 @@ export class KnowledgeStoreService {
         await adapter.open();
         db = adapter;
         console.log('[KnowledgeStore] Capacitor SQLite adapter opened successfully');
+        console.log('[KnowledgeStore] Using NATIVE persistent storage');
       } catch (e) {
         console.error('[KnowledgeStore] Failed to open Capacitor SQLite:', e);
         throw e;
@@ -164,9 +165,11 @@ export class KnowledgeStoreService {
       let rawDb: SQLiteDb;
       if (sqlite.oo1.JsStorageDb && isBrowser()) {
         console.log('[KnowledgeStore] Using localStorage-backed SQLite (browser)');
+        console.log('[KnowledgeStore] Using VOLATILE storage - data will be lost on app close');
         rawDb = new sqlite.oo1.JsStorageDb('amo-knowledge-store');
       } else {
         console.log('[KnowledgeStore] Using fallback file-based SQLite');
+        console.log('[KnowledgeStore] Using VOLATILE storage - data will be lost on app close');
         rawDb = new sqlite.oo1.DB('/amo-knowledge.sqlite3', 'ct');
       }
       db = new WasmSQLiteAdapter(rawDb as any);
@@ -294,6 +297,18 @@ export class KnowledgeStoreService {
 
       this.db = db;
       console.log('[KnowledgeStore] Database initialization complete');
+      
+      // Log initial data counts
+      setTimeout(async () => {
+        try {
+          const memoryCount = await this.getMemoryCount();
+          const summaryCount = await this.getSummaryCount();
+          const factCount = await this.getPermanentFactCount();
+          console.log('[KnowledgeStore] Initial data - Memories:', memoryCount, 'Summaries:', summaryCount, 'Facts:', factCount);
+        } catch (e) {
+          console.error('[KnowledgeStore] Failed to get initial counts:', e);
+        }
+      }, 1000);
     } catch (error) {
       throw error;
     }

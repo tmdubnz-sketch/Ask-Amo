@@ -17,7 +17,8 @@ import {
   Loader2,
   Download,
   FileText,
-  Settings
+  Settings,
+  HelpCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -33,6 +34,7 @@ export function VocabularyBuilder({ onClose }: VocabularyBuilderProps) {
   const [vocabularySets, setVocabularySets] = useState<VocabularySet[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedWords, setSelectedWords] = useState<Set<string>>(new Set());
+  const [showHelp, setShowHelp] = useState(false);
 
   // Extract from web state
   const [webUrl, setWebUrl] = useState('');
@@ -188,15 +190,24 @@ export function VocabularyBuilder({ onClose }: VocabularyBuilderProps) {
           <BookOpen className="w-4 h-4 text-[#ff4e00]" />
           <h2 className="text-sm font-semibold text-white/90">Vocabulary Builder</h2>
         </div>
-        {onClose && (
-          <button onClick={onClose} className="text-white/40 hover:text-white/60 transition-colors">
-            <XCircle className="w-4 h-4" />
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setShowHelp(!showHelp)}
+            className="text-white/40 hover:text-white/60 transition-colors"
+            title="How to use Vocabulary Builder"
+          >
+            <HelpCircle className="w-4 h-4" />
           </button>
-        )}
+          {onClose && (
+            <button onClick={onClose} className="text-white/40 hover:text-white/60 transition-colors">
+              <XCircle className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 px-4 py-2 border-b border-white/10 shrink-0 overflow-x-auto custom-scrollbar">
+      <div className="flex gap-1 px-4 py-2 border-b border-white/10 shrink-0 overflow-x-auto custom-scroll">
         <div className="flex gap-1 flex-shrink-0">
         {[
           { id: 'extract', label: 'Extract', icon: Upload },
@@ -222,8 +233,32 @@ export function VocabularyBuilder({ onClose }: VocabularyBuilderProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-        {status && (
+      <div className="flex-1 overflow-y-auto custom-scroll p-4">
+      {/* Help Section */}
+      {showHelp && (
+        <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
+          <h3 className="text-sm font-semibold text-white/90 mb-3">How to Use Vocabulary Builder</h3>
+          <div className="space-y-3 text-xs text-white/70">
+            <div>
+              <strong className="text-white/80">1. Extract:</strong> Pull vocabulary from websites, documents, or existing text. Just paste a URL or upload a file.
+            </div>
+            <div>
+              <strong className="text-white/80">2. Composer:</strong> Generate custom vocabulary sets for any topic (e.g., "business English", "medical terms").
+            </div>
+            <div>
+              <strong className="text-white/80">3. Library:</strong> View and manage all your saved vocabulary sets.
+            </div>
+            <div>
+              <strong className="text-white/80">4. Review:</strong> Practice your vocabulary with flashcards and quizzes.
+            </div>
+            <div className="mt-3 pt-3 border-t border-white/10">
+              <strong>💡 Tip:</strong> Words you save here will be available in the Sentence Builder to create practice sentences!
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status && (
           <div className={cn(
             'mb-4 p-3 rounded-lg text-xs',
             status.includes('Failed') ? 'bg-red-500/10 text-red-300 border border-red-500/20' :
@@ -475,7 +510,7 @@ export function VocabularyBuilder({ onClose }: VocabularyBuilderProps) {
                 </button>
               </div>
             </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+            <div className="space-y-2 max-h-64 overflow-y-auto custom-scroll">
               {extractedWords.map(word => (
                 <div
                   key={word.id}

@@ -60,28 +60,71 @@ export class CapacitorSQLiteAdapter implements AsyncSQLiteDb {
     if (!Capacitor.isNativePlatform()) {
       throw new Error('CapacitorSQLiteAdapter can only be used on native platforms');
     }
-    // Check if plugin is available
-    if (!CapacitorSQLite) {
+    
+    this.dbName = dbName;
+    
+    // Try to get the plugin - it might be loaded differently on Android
+    let plugin = CapacitorSQLite;
+    if (!plugin) {
+      console.log('[CapSQLite] CapacitorSQLite not directly available, trying dynamic import');
+      try {
+        // Try importing the plugin dynamically
+        const sqlitePlugin = require('@capacitor-community/sqlite');
+        plugin = sqlitePlugin.CapacitorSQLite;
+        console.log('[CapSQLite] Plugin loaded dynamically:', !!plugin);
+      } catch (e) {
+        console.error('[CapSQLite] Failed to load plugin dynamically:', e);
+      }
+    }
+    
+    if (!plugin) {
+      console.error('[CapSQLite] CapacitorSQLite plugin not available');
       throw new Error('CapacitorSQLite plugin is not available. Did you run cap sync?');
     }
-    this.dbName = dbName;
-    this.conn = new SQLiteConnection(CapacitorSQLite);
-    console.log('[CapSQLite] Adapter created for database:', dbName);
+    
+    try {
+      this.conn = new SQLiteConnection(plugin);
+      console.log('[CapSQLite] Adapter created for database:', dbName);
+      console.log('[CapSQLite] SQLiteConnection created successfully');
+    } catch (e) {
+      console.error('[CapSQLite] Failed to create SQLiteConnection:', e);
+      throw e;
+    }
   }
 
   async open(): Promise<void> {
-    if (this.ready) return;
-    await this.conn.checkConnectionsConsistency();
-    const isConn = await this.conn.isConnection(this.dbName, false);
-    if (isConn.result) {
-      const db = await this.conn.retrieveConnection(this.dbName, false);
-      await db.open();
-    } else {
-      const db = await this.conn.createConnection(this.dbName, false, 'no-encryption', 1, false);
-      await db.open();
+    if (this.ready) {
+      console.log('[CapSQLite] Database already ready:', this.dbName);
+      return;
     }
-    this.ready = true;
-    console.log('[CapSQLite] Database opened:', this.dbName);
+    
+    console.log('[CapSQLite] Opening database:', this.dbName);
+    
+    try {
+      await this.conn.checkConnectionsConsistency();
+      console.log('[CapSQLite] Connection consistency checked');
+      
+      const isConn = await this.conn.isConnection(this.dbName, false);
+      console.log('[CapSQLite] Is connection exists?', isConn.result);
+      
+      if (isConn.result) {
+        console.log('[CapSQLite] Retrieving existing connection');
+        const db = await this.conn.retrieveConnection(this.dbName, false);
+        await db.open();
+        console.log('[CapSQLite] Existing connection opened');
+      } else {
+        console.log('[CapSQLite] Creating new connection');
+        const db = await this.conn.createConnection(this.dbName, false, 'no-encryption', 1, false);
+        await db.open();
+        console.log('[CapSQLite] New connection created and opened');
+      }
+      
+      this.ready = true;
+      console.log('[CapSQLite] Database opened successfully:', this.dbName);
+    } catch (e) {
+      console.error('[CapSQLite] Failed to open database:', e);
+      throw e;
+    }
   }
 
   private async getDb() {
@@ -131,5 +174,15 @@ export class CapacitorSQLiteAdapter implements AsyncSQLiteDb {
  * Call this INSTEAD of directly creating SQLite WASM on native.
  */
 export function isNativeSQLiteAvailable(): boolean {
-  return Capacitor.isNativePlatform();
+  const isNative = Capacitor.isNativePlatform();
+  const platform = Capacitor.getPlatform();
+  console.log('[SQLiteAdapter] Platform check - isNative:', isNative, 'platform:', platform);
+  
+  if (isNative) {
+    // Force return true on Android - the plugin should be available after cap sync
+    console.log('[SQLiteAdapter] Running on native platform, forcing SQLite availability');
+    return true;
+  }
+  
+  return false;
 }

@@ -31,7 +31,8 @@ import {
   Database,
   Cpu,
   Users,
-  Clock
+  Clock,
+  HelpCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -43,6 +44,7 @@ export function IntentEnhancer({ onClose }: IntentEnhancerProps) {
   const [activeTab, setActiveTab] = useState<'predictor' | 'keywords' | 'tags' | 'patterns' | 'analytics'>('predictor');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
   
   // Predictor state
   const [testInput, setTestInput] = useState('');
@@ -198,11 +200,20 @@ export function IntentEnhancer({ onClose }: IntentEnhancerProps) {
           <Brain className="w-4 h-4 text-[#ff4e00]" />
           <h2 className="text-sm font-semibold text-white/90">Intent Enhancer</h2>
         </div>
-        {onClose && (
-          <button onClick={onClose} className="text-white/40 hover:text-white/60 transition-colors">
-            <XCircle className="w-4 h-4" />
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setShowHelp(!showHelp)}
+            className="text-white/40 hover:text-white/60 transition-colors"
+            title="How to use Intent Enhancer"
+          >
+            <HelpCircle className="w-4 h-4" />
           </button>
-        )}
+          {onClose && (
+            <button onClick={onClose} className="text-white/40 hover:text-white/60 transition-colors">
+              <XCircle className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -234,7 +245,34 @@ export function IntentEnhancer({ onClose }: IntentEnhancerProps) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-        {status && (
+      {/* Help Section */}
+      {showHelp && (
+        <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
+          <h3 className="text-sm font-semibold text-white/90 mb-3">How to Use Intent Enhancer</h3>
+          <div className="space-y-3 text-xs text-white/70">
+            <div>
+              <strong className="text-white/80">1. Predictor:</strong> Test how Amo understands your requests. Type something and see what intent it detects.
+            </div>
+            <div>
+              <strong className="text-white/80">2. Keywords:</strong> Add important words that trigger specific responses (e.g., "create" → code generation).
+            </div>
+            <div>
+              <strong className="text-white/80">3. Tags:</strong> Group related keywords together (e.g., "greeting", "coding", "help").
+            </div>
+            <div>
+              <strong className="text-white/80">4. Patterns:</strong> Create advanced patterns for complex requests using regular expressions.
+            </div>
+            <div>
+              <strong className="text-white/80">5. Analytics:</strong> See which intents are most common and how well they're being recognized.
+            </div>
+            <div className="mt-3 pt-3 border-t border-white/10">
+              <strong>💡 Tip:</strong> This helps Amo better understand what you want, especially for complex or specific requests!
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status && (
           <div className={cn(
             'mb-4 p-3 rounded-lg text-xs',
             status.includes('Failed') ? 'bg-red-500/10 text-red-300 border border-red-500/20' :

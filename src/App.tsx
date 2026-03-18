@@ -533,7 +533,10 @@ export default function App({ ready = true }: AppProps) {
     return stored === null ? true : stored === 'true';
   });
   const [isListening, setIsListening] = useState(false);
-  const [voiceContinuous, setVoiceContinuous] = useState(() => localStorage.getItem('amo_voice_continuous') === 'true');
+  const [voiceContinuous, setVoiceContinuous] = useState(() => {
+    const stored = localStorage.getItem('amo_voice_continuous');
+    return stored === null ? false : stored === 'true';
+  });
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isDeepThinkEnabled, setIsDeepThinkEnabled] = useState(() => localStorage.getItem('amo_deep_think_enabled') === 'true');
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(() => localStorage.getItem('amo_web_search_enabled') !== 'false');
@@ -1008,6 +1011,10 @@ export default function App({ ready = true }: AppProps) {
       setSeedPackRows(packs);
       if (packs.length > 0) {
         setAreStarterPacksImported(true);
+      } else if (allMemory.length === 0 && allSummaries.length === 0) {
+        // Brain is completely empty, reset the flag
+        setAreStarterPacksImported(false);
+        localStorage.removeItem('amo_starter_packs_imported');
       }
     } catch (brainError) {
       console.error('[AskAmo] Failed to refresh brain state', brainError);
@@ -1257,6 +1264,7 @@ export default function App({ ready = true }: AppProps) {
           const seedPacks = await knowledgeStoreService.listSeedPacks();
           return `Brain status: ${memories.length} memory entries, ${summaries.length} summaries, ${seedPacks.length} seed packs loaded.`;
         } catch (e) {
+          console.error('[AskAmo] Failed to get brain status:', e);
           return `Brain bootstrap v3 complete. Memory and knowledge layers are seeded.`;
         }
       }
@@ -2260,9 +2268,9 @@ export default function App({ ready = true }: AppProps) {
               <button onClick={() => setActiveView('webview')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'webview' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Web Browser</button>
               <button onClick={() => setActiveView('terminal')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'terminal' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Terminal</button>
               <button onClick={() => setActiveView('editor')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'editor' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Code Editor</button>
-              <button onClick={() => setActiveView('vocabulary')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'vocabulary' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Vocabulary</button>
-              <button onClick={() => setActiveView('sentence-builder')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'sentence-builder' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Sentence Builder</button>
-              <button onClick={() => setActiveView('intent-enhancer')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'intent-enhancer' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Intent Enhancer</button>
+              <button onClick={() => setActiveView('vocabulary')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'vocabulary' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")} title="Build and practice vocabulary">Vocabulary</button>
+              <button onClick={() => setActiveView('sentence-builder')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'sentence-builder' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")} title="Create practice sentences">Sentence Builder</button>
+              <button onClick={() => setActiveView('intent-enhancer')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'intent-enhancer' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")} title="Teach Amo to understand you better">Intent Enhancer</button>
              </div>
            </div>
          </div>
@@ -2323,18 +2331,75 @@ export default function App({ ready = true }: AppProps) {
 
             {activeView === 'vocabulary' && (
               <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
+                {localStorage.getItem('amo_vocabulary_visited') !== 'true' && (
+                  <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="text-[#ff8a5c] mt-0.5">💡</div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold text-white/90 mb-1">Quick Start: Vocabulary Builder</h3>
+                        <p className="text-xs text-white/70 mb-2">
+                          Click the <strong>Help</strong> button (❓) in the top-right to learn how to extract words from websites, generate vocabulary sets, and practice with flashcards.
+                        </p>
+                        <button 
+                          onClick={() => localStorage.setItem('amo_vocabulary_visited', 'true')}
+                          className="text-xs text-[#ff8a5c] hover:text-[#ff4e00] transition-colors"
+                        >
+                          Got it →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <VocabularyBuilder />
               </div>
             )}
 
             {activeView === 'sentence-builder' && (
               <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
+                {localStorage.getItem('amo_sentence_builder_visited') !== 'true' && (
+                  <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="text-[#ff8a5c] mt-0.5">💡</div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold text-white/90 mb-1">Quick Start: Sentence Builder</h3>
+                        <p className="text-xs text-white/70 mb-2">
+                          Click the <strong>Help</strong> button (❓) to learn how to create sentences with AI, build templates, and use vocabulary words in practice sentences.
+                        </p>
+                        <button 
+                          onClick={() => localStorage.setItem('amo_sentence_builder_visited', 'true')}
+                          className="text-xs text-[#ff8a5c] hover:text-[#ff4e00] transition-colors"
+                        >
+                          Got it →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <SentenceBuilder />
               </div>
             )}
 
             {activeView === 'intent-enhancer' && (
               <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
+                {localStorage.getItem('amo_intent_enhancer_visited') !== 'true' && (
+                  <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="text-[#ff8a5c] mt-0.5">💡</div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold text-white/90 mb-1">Quick Start: Intent Enhancer</h3>
+                        <p className="text-xs text-white/70 mb-2">
+                          Click the <strong>Help</strong> button (❓) to learn how to teach Amo to understand your specific requests better with keywords and patterns.
+                        </p>
+                        <button 
+                          onClick={() => localStorage.setItem('amo_intent_enhancer_visited', 'true')}
+                          className="text-xs text-[#ff8a5c] hover:text-[#ff4e00] transition-colors"
+                        >
+                          Got it →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <IntentEnhancer />
               </div>
             )}
