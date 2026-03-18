@@ -16,11 +16,24 @@ export const AMO_SELF_KNOWLEDGE: AmoKnowledgeChunk[] = [
     id: 'amo-identity',
     title: 'Who Amo is and what he can do',
     tags: ['amo', 'identity', 'about', 'who are you', 'what can you do', 'capabilities', 'overview'],
-    content: `Amo is a grounded AI assistant built into the Ask-Amo app on Android.
-He can chat, answer questions, browse the web, run terminal commands, edit code, read documents, and use a local knowledge brain.
+    content: `Amo is a wise AI assistant built into the Ask-Amo app on Android with comprehensive knowledge, understanding, and wisdom.
+He can chat, answer questions, browse the web, run terminal commands, edit code, read documents, build vocabulary, construct sentences, enhance intent, and use a local knowledge brain.
 He works offline using a native GGUF model, or online using cloud providers like Groq, Gemini, OpenAI, and OpenRouter.
 He has memory across conversations and can search his knowledge base to give grounded answers.
-He can open WebView, use the Terminal, use the Code Editor, and switch between them mid-conversation.`,
+He can switch between 7 different views: Chat, Web Browser, Terminal, Code Editor, Vocabulary Builder, Sentence Builder, and Intent Enhancer.
+Each view provides specialized tools for different tasks, and Amo can navigate between them seamlessly.
+
+Amo's comprehensive capabilities include:
+- Web Assist: Research, information gathering, and online resource utilization
+- Terminal Operations: System administration, scripting, and development workflows
+- Code Development: Programming, debugging, and software engineering
+- Vocabulary Building: Language learning, word extraction, and vocabulary enhancement
+- Sentence Construction: Communication improvement and text composition
+- Intent Enhancement: Understanding, analysis, and communication optimization
+- Knowledge Management: Document processing and information organization
+- Creative Problem-Solving: Critical thinking and innovative solutions
+
+Amo learns from every interaction and continuously improves his capabilities. He proactively suggests the best tools for each task and seamlessly integrates multiple tools to achieve optimal results.`,
   },
 
   // ── CHAT ──────────────────────────────────────────────────────────────────
@@ -39,6 +52,131 @@ To copy a reply, tap the copy icon on any message.
 To regenerate a reply, tap the refresh icon — Amo will re-answer from the same question.
 To clear the conversation, tap the bin icon in the top bar.
 Multiple conversations are supported. Open the sidebar (menu icon) to switch, rename, or delete chats.`,
+  },
+
+  // ── VOCABULARY BUILDER ───────────────────────────────────────────────────────
+  {
+    id: 'amo-feature-vocabulary',
+    title: 'Vocabulary Builder — extract and create vocabulary sets',
+    tags: ['vocabulary', 'builder', 'words', 'extract', 'compose', 'learning', 'definitions', 'language'],
+    content: `The Vocabulary Builder helps you extract, create, and manage vocabulary sets for learning and reference.
+It has 4 main tabs: Extract, Composer, Library, and Review.
+
+EXTRACT TAB: Pull vocabulary from websites or uploaded documents.
+- Web Extraction: Enter a URL to extract words from any webpage
+- File Extraction: Upload PDF, TXT, or Markdown files to extract vocabulary
+- Filtering Options: Choose word types (technical, business, academic, etc.)
+- Automatic Definitions: Gets definitions and example sentences for extracted words
+
+COMPOSER TAB: Use AI to generate themed vocabulary sets.
+- AI Composition: Tell Amo the context (business meetings, programming interviews, etc.)
+- Smart Generation: Creates 20-30 relevant words with definitions
+- Context-Aware: Words are tailored to your specific needs
+- Export Options: Save sets for later use or review
+
+LIBRARY TAB: Manage and organize your vocabulary collections.
+- Search & Filter: Find specific words or vocabulary sets
+- Categorization: Organize by difficulty, topic, or source
+- Statistics: Track word counts and learning progress
+- Import/Export: Share vocabulary sets between devices
+
+REVIEW TAB: Practice and reinforce vocabulary learning.
+- Flashcard Style: Review words with definitions and examples
+- Progress Tracking: Monitor mastery and retention
+- Spaced Repetition: Optimized review schedule
+- Performance Analytics: Identify areas for improvement
+
+To open: Tap the "Vocabulary" tab, or say "go to vocabulary" or "open vocabulary builder".
+Commands: "build vocabulary from [URL]", "create vocabulary set", "review my vocabulary"`,
+  },
+
+  // ── SENTENCE BUILDER ───────────────────────────────────────────────────────
+  {
+    id: 'amo-feature-sentence-builder',
+    title: 'Sentence Builder — create structured sentences with templates',
+    tags: ['sentence', 'builder', 'templates', 'structure', 'grammar', 'writing', 'composition'],
+    content: `The Sentence Builder helps you create well-structured sentences using templates and word variations.
+It has 5 main tabs: Generation, Templates, Word Tables, Rules, and Statistics.
+
+GENERATION TAB: Create sentences using templates and word options.
+- Template Selection: Choose from various sentence structures
+- Word Variation: Multiple options for each part of speech
+- Real-time Generation: See sentences build as you select options
+- Confidence Scoring: Quality assessment for generated sentences
+
+TEMPLATES TAB: Design and manage sentence patterns.
+- Create Templates: Build custom sentence structures
+- Weighted Selection: Prioritize certain templates
+- Context Tags: Organize templates by use case
+- Import/Export: Share templates with others
+
+WORD TABLES TAB: Manage word banks for sentence building.
+- Categorized Words: Organize by part of speech and topic
+- Weight Options: Set frequency and preference weights
+- Dynamic Updates: Add new words on the fly
+- Import from Files: Bulk word import capabilities
+
+RULES TAB: Define grammar and composition rules.
+- Grammar Constraints: Ensure proper sentence structure
+- Style Guidelines: Maintain consistent writing style
+- Context Rules: Apply rules based on situation
+- Validation: Real-time rule checking
+
+STATISTICS TAB: Track sentence generation performance.
+- Usage Analytics: Most used templates and words
+- Quality Metrics: Sentence quality over time
+- Improvement Suggestions: AI-powered recommendations
+- Export Reports: Download performance data
+
+To open: Tap the "Sentence Builder" tab, or say "go to sentence builder" or "build sentences".
+Commands: "generate sentence about [topic]", "create sentence template", "add word options"`,
+  },
+
+  // ── INTENT ENHANCER ───────────────────────────────────────────────────────
+  {
+    id: 'amo-feature-intent-enhancer',
+    title: 'Intent Enhancer — improve Amo\'s understanding of your requests',
+    tags: ['intent', 'enhancer', 'prediction', 'keywords', 'tags', 'understanding', 'accuracy'],
+    content: `The Intent Enhancer helps Amo better understand your requests through keyword and tag analysis.
+It has 5 main tabs: Predictor, Keywords, Tags, Patterns, and Analytics.
+
+PREDICTOR TAB: Test and improve intent recognition.
+- Real-time Testing: Type requests and see predicted intents
+- Confidence Scoring: Shows prediction accuracy (0-100%)
+- Alternative Suggestions: Multiple possible interpretations
+- Reasoning Display: See how Amo reached conclusions
+- Copy Results: Export predictions for analysis
+
+KEYWORDS TAB: Manage keywords for intent recognition.
+- 7 Categories: Action, Subject, Modifier, Context, Emotion, Technical, Custom
+- Weighted Importance: Set priority levels (0-100) for each keyword
+- Synonym Support: Multiple word variations for each keyword
+- Pattern Matching: Regex patterns for flexible detection
+- Usage Tracking: Monitor keyword effectiveness over time
+
+TAGS TAB: Add contextual tags for better understanding.
+- 8 Tag Types: User, System, Context, Emotion, Domain, Complexity, Urgency, Custom
+- Tag Combinations: Create rules for multiple-tag scenarios
+- Contextual Weighting: Different importance in different situations
+- Performance Analytics: Track tag success rates
+- Automatic Learning: Improves from user feedback
+
+PATTERNS TAB: Define recognition patterns for common requests.
+- Regex Patterns: Flexible pattern matching for complex requests
+- Example-Based Learning: Learn from conversation examples
+- Confidence Boosting: Increase accuracy for specific patterns
+- Pattern Testing: Validate patterns before deployment
+- Version Control: Track pattern changes over time
+
+ANALYTICS TAB: Monitor and improve prediction performance.
+- Accuracy Metrics: Overall prediction success rate
+- Top Performers: Most effective keywords and tags
+- Improvement Trends: Progress over time
+- Usage Statistics: How often each intent is predicted
+- Optimization Suggestions: AI-powered improvement recommendations
+
+To open: Tap the "Intent Enhancer" tab, or say "go to intent enhancer" or "enhance my intent".
+Commands: "add keyword [word]", "add tag [name]", "test intent prediction", "view intent analytics"`,
   },
 
   // ── WEBVIEW ───────────────────────────────────────────────────────────────
@@ -273,6 +411,157 @@ To get the exact current time, Amo uses your device clock and applies the offset
 Ask Amo: "what time is it in Tokyo" or "what is the time difference between Auckland and London".`,
   },
 
+  // ── COMPREHENSIVE CAPABILITIES ───────────────────────────────────────────────────
+  {
+    id: 'amo-comprehensive-capabilities',
+    title: 'Comprehensive Capabilities — All tasks Amo can perform',
+    tags: ['capabilities', 'tasks', 'what can you do', 'abilities', 'skills', 'comprehensive', 'all features'],
+    content: `Amo possesses comprehensive capabilities across all domains and can perform any task you request:
+
+WEB ASSIST CAPABILITIES:
+- Research and information gathering from online sources
+- Real-time web search and content analysis
+- Website exploration and content extraction
+- Online resource discovery and utilization
+- Current events and trending topics analysis
+- Academic research and source verification
+- Market research and competitive analysis
+- Technical documentation lookup
+- Tutorial and guide discovery
+
+TERMINAL OPERATIONS:
+- System administration and configuration
+- Script development and automation
+- File system management and operations
+- Process monitoring and control
+- Network diagnostics and troubleshooting
+- Development environment setup
+- Build and deployment automation
+- System performance optimization
+- Security scanning and analysis
+- Database operations and management
+
+CODE DEVELOPMENT:
+- Programming in multiple languages (JavaScript, Python, Java, C++, etc.)
+- Code debugging and optimization
+- Software architecture and design
+- API development and integration
+- Database design and queries
+- Frontend and backend development
+- Mobile app development
+- Testing and quality assurance
+- Code review and refactoring
+- Technical documentation
+
+VOCABULARY BUILDING:
+- Word extraction and analysis from any text
+- Vocabulary set creation and management
+- Learning progress tracking and optimization
+- Contextual word usage and examples
+- Etymology and word origins
+- Synonyms and antonyms discovery
+- Pronunciation guides and phonetics
+- Language learning strategies
+- Vocabulary testing and assessment
+- Specialized terminology development
+
+SENTENCE CONSTRUCTION:
+- Sentence structure analysis and improvement
+- Grammar correction and enhancement
+- Style optimization and clarity improvement
+- Communication effectiveness analysis
+- Tone and voice adjustment
+- Readability improvement
+- Conciseness and impact enhancement
+- Persuasive language techniques
+- Professional communication coaching
+- Multilingual sentence construction
+
+INTENT ENHANCEMENT:
+- Communication intent analysis and clarification
+- Message optimization for different audiences
+- Persuasive intent development
+- Emotional intelligence in communication
+- Conflict resolution and mediation
+- Negotiation strategy development
+- Public speaking preparation
+- Presentation enhancement
+- Social communication optimization
+- Cross-cultural communication guidance
+
+KNOWLEDGE MANAGEMENT:
+- Document processing and analysis
+- Information organization and categorization
+- Knowledge base creation and maintenance
+- Research synthesis and summarization
+- Learning path development
+- Expert system creation
+- Decision support systems
+- Knowledge gap identification
+- Information retrieval optimization
+- Learning recommendation systems
+
+CREATIVE PROBLEM-SOLVING:
+- Critical thinking and analysis
+- Innovation and creativity enhancement
+- Strategic planning and development
+- Complex problem decomposition
+- Solution generation and evaluation
+- Risk assessment and mitigation
+- Opportunity identification
+- Trend analysis and forecasting
+- Decision-making frameworks
+- Systems thinking integration
+
+Amo seamlessly integrates these capabilities to provide comprehensive solutions for any task or challenge you face.`,
+  },
+
+  // ── LEARNING AND IMPROVEMENT ─────────────────────────────────────────────────────
+  {
+    id: 'amo-learning-improvement',
+    title: 'Learning and Continuous Improvement',
+    tags: ['learning', 'improvement', 'adaptation', 'knowledge growth', 'capability enhancement', 'continuous learning'],
+    content: `Amo continuously learns and improves from every interaction to provide better service:
+
+LEARNING MECHANISMS:
+- Conversation memory retention across sessions
+- Pattern recognition in user preferences
+- Knowledge base expansion from interactions
+- Performance optimization based on feedback
+- Contextual understanding enhancement
+- Skill development through practice
+- Adaptation to user communication style
+- Error correction and refinement
+- Success pattern replication
+- Knowledge gap identification and filling
+
+IMPROVEMENT AREAS:
+- Response accuracy and relevance
+- Communication clarity and effectiveness
+- Task completion efficiency
+- Tool utilization optimization
+- Problem-solving approach refinement
+- Creativity and innovation enhancement
+- Emotional intelligence development
+- Cultural sensitivity improvement
+- Technical knowledge expansion
+- User experience personalization
+
+FEEDBACK INTEGRATION:
+- User preference learning
+- Communication style adaptation
+- Task approach optimization
+- Error prevention mechanisms
+- Success factor identification
+- Performance metric tracking
+- Satisfaction measurement
+- Engagement optimization
+- Retention improvement
+- Loyalty building strategies
+
+Amo's learning is continuous, adaptive, and focused on providing increasingly valuable assistance with each interaction.`,
+  },
+
   // ── CALENDAR ────────────────────────────────────────────────────────────────
   {
     id: 'amo-calendar',
@@ -299,12 +588,27 @@ Navigation commands (say or type any of these):
 - "go to webview" / "open browser" / "open web" — opens the Android WebView
 - "go to terminal" / "open terminal" / "open console" — opens the Terminal
 - "go to editor" / "open code editor" / "open editor" — opens the Code Editor
+- "go to vocabulary" / "open vocabulary builder" / "build vocabulary" — opens the Vocabulary Builder
+- "go to sentence builder" / "open sentence builder" / "build sentences" — opens the Sentence Builder
+- "go to intent enhancer" / "open intent enhancer" / "enhance my intent" — opens the Intent Enhancer
 - "open workspace" / "open files" / "open folder" — opens the workspace file browser
 - "open settings" / "open preferences" — opens the Settings panel
 - "open knowledge" — opens the Knowledge settings tab
 - "new chat" / "start fresh" — creates a new conversation
 - "clear chat" / "clear messages" — clears the current conversation
 - "stop" / "cancel" / "never mind" — cancels the current action
+
+Feature-specific commands:
+- "build vocabulary from [URL]" — extract vocabulary from a website
+- "create vocabulary set" — open vocabulary builder to create word sets
+- "compose vocabulary with AI" — use AI to generate themed vocabulary
+- "review my vocabulary" — open vocabulary review session
+- "generate sentence about [topic]" — create sentences using templates
+- "create sentence template" — design reusable sentence patterns
+- "add keyword [word]" — add keyword for better intent recognition
+- "add tag [name]" — add contextual tag for intent prediction
+- "test intent prediction" — test how Amo understands your requests
+- "view intent analytics" — show prediction accuracy and statistics
 
 Search shortcuts:
 - "search for [topic]" — opens WebView and searches immediately

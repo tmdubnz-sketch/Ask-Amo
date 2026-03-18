@@ -36,6 +36,7 @@ export async function runIdeLoop(options: IdeLoopOptions): Promise<IdeLoopResult
   const filesCreated: string[] = [];
   const commandsRun: string[] = [];
   let iterations = 0;
+  let consecutiveErrors = 0;
 
   const ideCtx: IdeContext = {
     cwd: terminalBridgeService.getCwd(chatId) || 'amo-workspace/',
@@ -57,6 +58,10 @@ export async function runIdeLoop(options: IdeLoopOptions): Promise<IdeLoopResult
     if (isRequestCanceled()) break;
     iterations++;
 
+    // Update context before each iteration
+    ideCtx.recentFiles = (await workspaceWriteService.listFiles(chatId)).map(f => f.name);
+    ideCtx.cwd = terminalBridgeService.getCwd(chatId) || ideCtx.cwd;
+
     const ideSystemPrompt = buildIdeSystemPrompt(ideCtx);
 
     const fullSystem = [
@@ -70,66 +75,96 @@ export async function runIdeLoop(options: IdeLoopOptions): Promise<IdeLoopResult
 
     onStatus(`Thinking... (step ${iterations})`);
 
-    const rawResponse = await generate(messages, fullSystem);
+    try {
+      const rawResponse = await generate(messages, fullSystem);
 
-    if (isRequestCanceled()) break;
+      if (isRequestCanceled()) break;
 
-    const toolCalls = extractToolCalls(rawResponse);
-    const displayText = stripToolCalls(rawResponse);
+      const toolCalls = extractToolCalls(rawResponse);
+      const displayText = stripToolCalls(rawResponse);
 
-    if (toolCalls.length === 0) {
-      finalReply = displayText;
-      onPartialReply(displayText);
-      break;
-    }
-
-    if (displayText.trim()) {
-      onPartialReply(displayText + '\n\n_Running tools..._');
-    }
-
-    onStatus(`Executing ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''}...`);
-
-    const batch = await amoIdeDispatcher.dispatch(rawResponse, chatId);
-
-    if (isRequestCanceled()) break;
-
-    if (batch.viewSwitch) onViewSwitch(batch.viewSwitch);
-    if (batch.webViewUrl) onWebViewUrl(batch.webViewUrl);
-    if (batch.previewPath) {
-      const content = await readFileForPreview(batch.previewPath, chatId);
-      onPreviewFile(batch.previewPath, content);
-    }
-
-    for (const r of batch.results) {
-      if (r.toolCall.tool === 'write') {
-        filesCreated.push((r.toolCall as any).path);
+      if (toolCalls.length === 0) {
+        finalReply = displayText;
+        onPartialReply(displayText);
+        break;
       }
-      if (r.toolCall.tool === 'run') {
-        commandsRun.push((r.toolCall as any).command);
-        ideCtx.lastTerminalOutput = r.result.slice(0, 400);
-        ideCtx.cwd = terminalBridgeService.getCwd(chatId) || ideCtx.cwd;
+
+      if (displayText.trim()) {
+        onPartialReply(displayText + '\n\n_Running tools..._');
       }
-    }
 
-    ideCtx.recentFiles = (await workspaceWriteService.listFiles(chatId)).map(f => f.name);
+      onStatus(`Executing ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''}...`);
 
-    toolResultHistory.push(batch.contextBlock);
+      const batch = await amoIdeDispatcher.dispatch(rawResponse, chatId);
 
-    messages.push({
-      role: 'assistant',
-      content: rawResponse,
-    });
-    messages.push({
-      role: 'user',
-      content: `[Tool results]\n${batch.contextBlock}\n\nContinue with the task. If complete, give a brief summary of what was done.`,
-    });
+      if (isRequestCanceled()) break;
 
-    if (!batch.hasErrors && iterations >= 2) {
-      continue;
-    }
+      // Handle view switches and previews
+      if (batch.viewSwitch) onViewSwitch(batch.viewSwitch);
+      if (batch.webViewUrl) onWebViewUrl(batch.webViewUrl);
+      if (batch.previewPath) {
+        const content = await readFileForPreview(batch.previewPath, chatId);
+        onPreviewFile(batch.previewPath, content);
+        ideCtx.openFile = batch.previewPath;
+        ideCtx.openFileContent = content;
+      }
 
-    if (batch.hasErrors) {
-      onStatus('Analyzing errors...');
+      // Update context with tool results
+      for (const r of batch.results) {
+        if (r.toolCall.tool === 'write') {
+          filesCreated.push((r.toolCall as any).path);
+        }
+        if (r.toolCall.tool === 'run') {
+          commandsRun.push((r.toolCall as any).command);
+          ideCtx.lastTerminalOutput = r.result.slice(0, 400);
+          ideCtx.cwd = terminalBridgeService.getCwd(chatId) || ideCtx.cwd;
+        }
+      }
+
+      toolResultHistory.push(batch.contextBlock);
+
+      // Add tool results to conversation
+      messages.push({
+        role: 'assistant',
+        content: rawResponse,
+      });
+      messages.push({
+        role: 'user',
+        content: `[Tool results]\n${batch.contextBlock}\n\nContinue with the task. If complete, give a brief summary of what was done.`,
+      });
+
+      // Error handling and loop control
+      if (batch.hasErrors) {
+        consecutiveErrors++;
+        onStatus(`Analyzing errors... (${consecutiveErrors}/${MAX_ITERATIONS})`);
+        
+        if (consecutiveErrors >= 3) {
+          finalReply = 'I encountered multiple errors while trying to complete this task. Please check the error messages above and let me know if you\'d like me to try a different approach.';
+          onPartialReply(finalReply);
+          break;
+        }
+        continue;
+      } else {
+        consecutiveErrors = 0; // Reset error counter on success
+      }
+
+      // Check if task is complete (no errors and at least 2 iterations)
+      if (!batch.hasErrors && iterations >= 2) {
+        // Continue one more iteration to ensure completion
+        continue;
+      }
+
+    } catch (error) {
+      consecutiveErrors++;
+      console.error('[IDE Loop] Error in iteration:', iterations, error);
+      
+      if (consecutiveErrors >= 2) {
+        finalReply = `I encountered a technical error while processing your request: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        onPartialReply(finalReply);
+        break;
+      }
+      
+      onStatus(`Retrying after error... (${consecutiveErrors})`);
       continue;
     }
   }

@@ -1,5 +1,10 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
-import { Capacitor } from '@capacitor/core';
+import {
+  type AsyncSQLiteDb,
+  WasmSQLiteAdapter,
+  CapacitorSQLiteAdapter,
+  isNativeSQLiteAvailable,
+} from './sqliteAdapter';
 
 type SQLiteDb = {
   exec: (arg: string | { sql: string; bind?: unknown[] | Record<string, unknown>; rowMode?: 'object' | 'array'; returnValue?: 'resultRows'; resultRows?: unknown[] }) => unknown;
@@ -24,6 +29,7 @@ export interface KnowledgeDocumentRow {
   starter_pack_category: string | null;
   chunk_count: number;
   updated_at: number;
+  created_at?: number;
 }
 
 export interface KnowledgeChunkRow {
@@ -39,6 +45,7 @@ export interface KnowledgeChunkRow {
   starter_pack_version: string | null;
   starter_pack_category: string | null;
   updated_at: number;
+  created_at?: number;
 }
 
 export interface ConversationMemoryRow {
@@ -115,7 +122,7 @@ function parseJsonOrDefault<T>(value: string, fallback: T): T {
 
 export class KnowledgeStoreService {
   private sqlite: SQLiteModule | null = null;
-  private db: SQLiteDb | null = null;
+  private db: AsyncSQLiteDb | null = null;
   private initPromise: Promise<void> | null = null;
 
   async init(): Promise<void> {
@@ -134,39 +141,53 @@ export class KnowledgeStoreService {
   }
 
   private async initializeInternal(): Promise<void> {
-    const sqlite = await sqlite3InitModule() as unknown as SQLiteModule;
-    this.sqlite = sqlite;
+    let db: AsyncSQLiteDb;
 
-    let db: SQLiteDb;
-
-    if (Capacitor.isNativePlatform()) {
-      // On native Android, use file-based SQLite - persists across cache clears
-      // Using relative path with 'c' (create) and 't' (truncate=open existing or create new)
-      console.log('[KnowledgeStore] Initializing SQLite on native platform...');
-      db = new sqlite.oo1.DB('amo-knowledge.sqlite3', 'ct');
-      console.log('[KnowledgeStore] SQLite DB opened: amo-knowledge.sqlite3');
-    } else if (sqlite.oo1.JsStorageDb && isBrowser()) {
-      // On web browser, use localStorage-backed SQLite
-      console.log('[KnowledgeStore] Using localStorage-backed SQLite (browser)');
-      db = new sqlite.oo1.JsStorageDb('amo-knowledge-store');
+    if (isNativeSQLiteAvailable()) {
+      // On native Android, use Capacitor SQLite plugin — data persists in
+      // /data/data/<package>/databases/ and survives restarts & redeploys.
+      console.log('[KnowledgeStore] Native SQLite available, using Capacitor plugin');
+      try {
+        const adapter = new CapacitorSQLiteAdapter();
+        await adapter.open();
+        db = adapter;
+        console.log('[KnowledgeStore] Capacitor SQLite adapter opened successfully');
+      } catch (e) {
+        console.error('[KnowledgeStore] Failed to open Capacitor SQLite:', e);
+        throw e;
+      }
     } else {
-      // Fallback to file-based
-      console.log('[KnowledgeStore] Using fallback file-based SQLite');
-      db = new sqlite.oo1.DB('/amo-knowledge.sqlite3', 'ct');
+      // Browser path: use SQLite WASM with localStorage-backed storage
+      const sqlite = await sqlite3InitModule() as unknown as SQLiteModule;
+      this.sqlite = sqlite;
+
+      let rawDb: SQLiteDb;
+      if (sqlite.oo1.JsStorageDb && isBrowser()) {
+        console.log('[KnowledgeStore] Using localStorage-backed SQLite (browser)');
+        rawDb = new sqlite.oo1.JsStorageDb('amo-knowledge-store');
+      } else {
+        console.log('[KnowledgeStore] Using fallback file-based SQLite');
+        rawDb = new sqlite.oo1.DB('/amo-knowledge.sqlite3', 'ct');
+      }
+      db = new WasmSQLiteAdapter(rawDb as any);
     }
 
     try {
-      db.exec(`
-        PRAGMA journal_mode = WAL;
-        PRAGMA synchronous = NORMAL;
-        PRAGMA temp_store = MEMORY;
-        PRAGMA foreign_keys = ON;
+      // PRAGMAs must run individually — capacitor-sqlite's execute() cannot
+      // mix PRAGMAs with DDL in a single batch reliably.
+      await db.exec('PRAGMA journal_mode = WAL;');
+      await db.exec('PRAGMA synchronous = NORMAL;');
+      await db.exec('PRAGMA temp_store = MEMORY;');
+      await db.exec('PRAGMA foreign_keys = ON;');
 
+      // DDL batch — CREATE TABLE / CREATE INDEX
+      await db.exec(`
         CREATE TABLE IF NOT EXISTS app_meta (
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
         );
-
+      `);
+      await db.exec(`
         CREATE TABLE IF NOT EXISTS knowledge_documents (
           document_id TEXT PRIMARY KEY,
           document_name TEXT NOT NULL,
@@ -178,7 +199,8 @@ export class KnowledgeStoreService {
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
-
+      `);
+      await db.exec(`
         CREATE TABLE IF NOT EXISTS knowledge_chunks (
           id TEXT PRIMARY KEY,
           document_id TEXT NOT NULL,
@@ -195,13 +217,10 @@ export class KnowledgeStoreService {
           updated_at INTEGER NOT NULL,
           FOREIGN KEY (document_id) REFERENCES knowledge_documents(document_id) ON DELETE CASCADE
         );
-
-        CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document_id
-        ON knowledge_chunks(document_id);
-
-        CREATE INDEX IF NOT EXISTS idx_knowledge_documents_updated_at
-        ON knowledge_documents(updated_at DESC);
-
+      `);
+      await db.exec('CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document_id ON knowledge_chunks(document_id);');
+      await db.exec('CREATE INDEX IF NOT EXISTS idx_knowledge_documents_updated_at ON knowledge_documents(updated_at DESC);');
+      await db.exec(`
         CREATE TABLE IF NOT EXISTS conversation_memory (
           id TEXT PRIMARY KEY,
           scope TEXT NOT NULL,
@@ -213,10 +232,9 @@ export class KnowledgeStoreService {
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
-
-        CREATE INDEX IF NOT EXISTS idx_conversation_memory_scope
-        ON conversation_memory(scope, updated_at DESC);
-
+      `);
+      await db.exec('CREATE INDEX IF NOT EXISTS idx_conversation_memory_scope ON conversation_memory(scope, updated_at DESC);');
+      await db.exec(`
         CREATE TABLE IF NOT EXISTS memory_summaries (
           id TEXT PRIMARY KEY,
           scope TEXT NOT NULL,
@@ -227,10 +245,9 @@ export class KnowledgeStoreService {
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
-
-        CREATE INDEX IF NOT EXISTS idx_memory_summaries_scope
-        ON memory_summaries(scope, updated_at DESC);
-
+      `);
+      await db.exec('CREATE INDEX IF NOT EXISTS idx_memory_summaries_scope ON memory_summaries(scope, updated_at DESC);');
+      await db.exec(`
         CREATE TABLE IF NOT EXISTS tool_registry (
           tool_id TEXT PRIMARY KEY,
           display_name TEXT NOT NULL,
@@ -242,7 +259,8 @@ export class KnowledgeStoreService {
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
-
+      `);
+      await db.exec(`
         CREATE TABLE IF NOT EXISTS seed_packs (
           pack_id TEXT PRIMARY KEY,
           pack_name TEXT NOT NULL,
@@ -256,7 +274,7 @@ export class KnowledgeStoreService {
         );
       `);
 
-      db.exec({
+      await db.exec({
         sql: `
           INSERT INTO app_meta(key, value)
           VALUES('schema_version', ?1)
@@ -266,31 +284,36 @@ export class KnowledgeStoreService {
       });
 
       await this.migrateLegacyVectors(db);
-      this.seedDefaultToolRegistry(db);
-      this.seedDefaultKnowledgePacks(db);
+      console.log('[KnowledgeStore] Legacy vectors migrated');
+      
+      await this.seedDefaultToolRegistry(db);
+      console.log('[KnowledgeStore] Tool registry seeded');
+      
+      await this.seedDefaultKnowledgePacks(db);
+      console.log('[KnowledgeStore] Default knowledge packs seeded');
 
       this.db = db;
+      console.log('[KnowledgeStore] Database initialization complete');
     } catch (error) {
       throw error;
     }
   }
 
-  private async migrateLegacyVectors(db: SQLiteDb): Promise<void> {
+  private async migrateLegacyVectors(db: AsyncSQLiteDb): Promise<void> {
     if (!isBrowser()) {
       return;
     }
 
-    const alreadyMigrated = db.selectObjects<{ value: string }>(
+    const rows = await db.selectObjects<{ value: string }>(
       `SELECT value FROM app_meta WHERE key = 'legacy_vector_db_migrated'`
-    )[0]?.value;
-
-    if (alreadyMigrated === 'true') {
+    );
+    if (rows[0]?.value === 'true') {
       return;
     }
 
     const legacyRaw = window.localStorage.getItem(LEGACY_VECTOR_STORAGE_KEY);
     if (!legacyRaw) {
-      this.markLegacyMigrationComplete(db);
+      await this.markLegacyMigrationComplete(db);
       return;
     }
 
@@ -305,15 +328,15 @@ export class KnowledgeStoreService {
 
     if (legacyDocs.length === 0) {
       window.localStorage.removeItem(LEGACY_VECTOR_STORAGE_KEY);
-      this.markLegacyMigrationComplete(db);
+      await this.markLegacyMigrationComplete(db);
       return;
     }
 
     const now = Date.now();
-    db.transaction(() => {
+    await db.transaction(async () => {
       for (const doc of legacyDocs) {
         const metadata = doc.metadata || {};
-        db.exec({
+        await db.exec({
           sql: `
             INSERT INTO knowledge_documents (
               document_id, document_name, asset_kind, source,
@@ -342,7 +365,7 @@ export class KnowledgeStoreService {
           ],
         });
 
-        db.exec({
+        await db.exec({
           sql: `
             INSERT INTO knowledge_chunks (
               id, document_id, document_name, content, embedding_json, metadata_json,
@@ -375,11 +398,11 @@ export class KnowledgeStoreService {
     });
 
     window.localStorage.removeItem(LEGACY_VECTOR_STORAGE_KEY);
-    this.markLegacyMigrationComplete(db);
+    await this.markLegacyMigrationComplete(db);
   }
 
-  private markLegacyMigrationComplete(db: SQLiteDb): void {
-    db.exec({
+  private async markLegacyMigrationComplete(db: AsyncSQLiteDb): Promise<void> {
+    await db.exec({
       sql: `
         INSERT INTO app_meta(key, value)
         VALUES('legacy_vector_db_migrated', 'true')
@@ -388,7 +411,7 @@ export class KnowledgeStoreService {
     });
   }
 
-  private seedDefaultToolRegistry(db: SQLiteDb): void {
+  private async seedDefaultToolRegistry(db: AsyncSQLiteDb): Promise<void> {
     const now = Date.now();
     const defaultTools = [
       {
@@ -465,9 +488,9 @@ export class KnowledgeStoreService {
        },
     ];
 
-    db.transaction(() => {
+    await db.transaction(async () => {
       for (const tool of defaultTools) {
-        db.exec({
+        await db.exec({
           sql: `
             INSERT INTO tool_registry (
               tool_id, display_name, description, capability_group, enabled,
@@ -496,40 +519,97 @@ export class KnowledgeStoreService {
     });
   }
 
-  private seedDefaultKnowledgePacks(db: SQLiteDb): void {
+  private async seedDefaultKnowledgePacks(db: AsyncSQLiteDb): Promise<void> {
     const now = Date.now();
     const packs = [
       {
-        packId: 'amo.generic.conversation',
-        packName: 'Generic Conversation Patterns',
-        packType: 'conversation-patterns',
-        version: '1',
-        description: 'Short-form conversational response patterns for fast replies.',
+        packId: 'amo.superbrain.core',
+        packName: 'Superbrain Core',
+        packType: 'superbrain',
+        version: '2',
+        description: 'Core reasoning engine — chain-of-thought, builder integration, and adaptive response patterns.',
         payload: {
-          intents: ['greeting', 'idea', 'suggestion', 'question', 'clarification'],
-          style: 'short-direct-grounded',
-          rules: ['prefer practical answers', 'avoid long chain-of-thought style responses', 'escalate to retrieval when needed'],
+          reasoning: {
+            method: 'chain-of-thought',
+            steps: ['UNDERSTAND', 'DECOMPOSE', 'RETRIEVE', 'REASON', 'SYNTHESIZE', 'VERIFY'],
+            rules: [
+              'For simple questions, answer directly — do not over-reason.',
+              'For complex questions, show reasoning steps before the answer.',
+              'Always check builder state and knowledge context before answering.',
+              'If data is missing, say so — never fabricate.',
+              'Use builder tools to generate variations, count options, and enhance intent.',
+            ],
+          },
+          style: 'direct-grounded-practical',
+          adaptiveLength: {
+            short: 'Simple factual answer, one to two sentences.',
+            medium: 'Clear explanation with context, three to five sentences.',
+            full: 'Step-by-step reasoning with examples and builder data.',
+          },
         },
       },
       {
-        packId: 'amo.idea.response',
-        packName: 'Ideas And Suggestions',
-        packType: 'response-examples',
-        version: '1',
-        description: 'Guidance for replying to user ideas and suggestions clearly.',
+        packId: 'amo.superbrain.builders',
+        packName: 'Builder Integration',
+        packType: 'superbrain',
+        version: '2',
+        description: 'Patterns for reading, writing, and reasoning over Vocabulary Builder, Sentence Builder, and Intent Enhancer.',
         payload: {
-          pattern: ['reflect the idea', 'state feasibility', 'give next concrete step'],
+          tools: [
+            {
+              name: 'Vocabulary Builder',
+              capabilities: ['list words', 'add word', 'check mastery', 'generate vocabulary set', 'review words'],
+              stateFields: ['totalWords', 'masteredWords', 'learningWords', 'averageMastery'],
+              usageHint: 'When user asks about vocabulary, read builder state first. Report counts and suggest actions.',
+            },
+            {
+              name: 'Sentence Builder',
+              capabilities: ['list templates', 'generate sentence', 'count variations', 'add template', 'add word table'],
+              stateFields: ['totalTemplates', 'totalWords', 'estimatedVariations'],
+              usageHint: 'When user asks about sentences or variations, calculate from template structure. Multiply option counts per slot for total variations.',
+            },
+            {
+              name: 'Intent Enhancer',
+              capabilities: ['predict intent', 'list keywords', 'list tags', 'add keyword', 'get stats'],
+              stateFields: ['totalKeywords', 'totalTags', 'totalPredictions', 'averageConfidence', 'topIntents'],
+              usageHint: 'When user asks about intent or meaning, check keywords and patterns. Use predictions to enhance understanding.',
+            },
+          ],
+          interactionPatterns: [
+            'Read builder state before answering builder-related questions.',
+            'Report concrete numbers — word counts, variation estimates, confidence scores.',
+            'Suggest next actions based on current state — e.g. "You have 12 words at basic level, want to add intermediate ones?"',
+            'Cross-reference builders — use vocabulary words in sentence templates, use intent to select appropriate sentences.',
+          ],
+        },
+      },
+      {
+        packId: 'amo.superbrain.conversation',
+        packName: 'Conversation Patterns',
+        packType: 'superbrain',
+        version: '2',
+        description: 'Response patterns for common interaction types — greetings, questions, ideas, debugging, creative tasks.',
+        payload: {
+          patterns: {
+            greeting: { style: 'short', rule: 'Acknowledge and ask what they need.' },
+            question: { style: 'adaptive', rule: 'Answer first, then context. Use CoT for complex questions.' },
+            idea: { style: 'medium', rule: 'Reflect the idea, state feasibility, give next concrete step.' },
+            debug: { style: 'full', rule: 'Ask for the error or file. Diagnose step by step.' },
+            creative: { style: 'full', rule: 'Build atmosphere. Use specific images. Let meaning emerge.' },
+            builder: { style: 'adaptive', rule: 'Read builder state, report numbers, suggest actions.' },
+          },
           examples: [
-            'That can work. The fastest path is to start with the data layer first.',
-            'Good direction. The tradeoff is complexity, so we should keep the first version narrow.',
+            { input: 'how many variations?', response: 'Check builder state, multiply options per slot, report total.' },
+            { input: 'help me improve this sentence', response: 'Use Intent Enhancer to understand goal, Sentence Builder to generate alternatives.' },
+            { input: 'teach me some new words', response: 'Check Vocabulary Builder state, suggest words at the right difficulty level.' },
           ],
         },
       },
     ];
 
-    db.transaction(() => {
+    await db.transaction(async () => {
       for (const pack of packs) {
-        db.exec({
+        await db.exec({
           sql: `
             INSERT INTO seed_packs (
               pack_id, pack_name, pack_type, version, description,
@@ -570,8 +650,8 @@ export class KnowledgeStoreService {
     const now = Date.now();
     const metadata = record.metadata || {};
 
-    this.db!.transaction(() => {
-      this.db!.exec({
+    await this.db!.transaction(async () => {
+      await this.db!.exec({
         sql: `
           INSERT INTO knowledge_documents (
             document_id, document_name, asset_kind, source,
@@ -600,7 +680,7 @@ export class KnowledgeStoreService {
         ],
       });
 
-      this.db!.exec({
+      await this.db!.exec({
         sql: `
           INSERT INTO knowledge_chunks (
             id, document_id, document_name, content, embedding_json, metadata_json,
@@ -681,7 +761,7 @@ export class KnowledgeStoreService {
 
   async deleteDocument(documentId: string): Promise<void> {
     await this.init();
-    this.db!.exec({
+    await this.db!.exec({
       sql: `DELETE FROM knowledge_documents WHERE document_id = ?1`,
       bind: [documentId],
     });
@@ -689,7 +769,8 @@ export class KnowledgeStoreService {
 
   async clearKnowledge(): Promise<void> {
     await this.init();
-    this.db!.exec('DELETE FROM knowledge_chunks; DELETE FROM knowledge_documents;');
+    await this.db!.exec('DELETE FROM knowledge_chunks;');
+    await this.db!.exec('DELETE FROM knowledge_documents;');
   }
 
   async upsertConversationMemory(record: {
@@ -703,7 +784,7 @@ export class KnowledgeStoreService {
   }): Promise<void> {
     await this.init();
     const now = Date.now();
-    this.db!.exec({
+    await this.db!.exec({
       sql: `
         INSERT INTO conversation_memory (
           id, scope, memory_type, title, content, tags_json, weight, created_at, updated_at
@@ -734,7 +815,7 @@ export class KnowledgeStoreService {
 
   async listConversationMemory(scope: string): Promise<ConversationMemoryRow[]> {
     await this.init();
-    const results = this.db!.selectObjects<ConversationMemoryRow>(
+    const results = await this.db!.selectObjects<ConversationMemoryRow>(
       `
         SELECT id, scope, memory_type, title, content, tags_json, weight, created_at, updated_at
         FROM conversation_memory
@@ -755,20 +836,20 @@ export class KnowledgeStoreService {
     weight?: number;
   }): Promise<void> {
     await this.init();
-    const existing = this.db!.selectObjects<ConversationMemoryRow>(
+    const existing = (await this.db!.selectObjects<ConversationMemoryRow>(
       `
         SELECT id, scope, memory_type, title, content, tags_json, weight, created_at, updated_at
         FROM conversation_memory
         WHERE id = ?1
       `,
       [record.id]
-    )[0];
+    ))[0];
 
     if (!existing) {
       throw new Error('Memory note not found');
     }
 
-    this.db!.exec({
+    await this.db!.exec({
       sql: `
         UPDATE conversation_memory
         SET title = ?2,
@@ -791,7 +872,7 @@ export class KnowledgeStoreService {
 
   async deleteConversationMemory(id: string): Promise<void> {
     await this.init();
-    this.db!.exec({
+    await this.db!.exec({
       sql: `DELETE FROM conversation_memory WHERE id = ?1`,
       bind: [id],
     });
@@ -799,7 +880,7 @@ export class KnowledgeStoreService {
 
   async clearConversationMemoryScope(scope: string): Promise<void> {
     await this.init();
-    this.db!.exec({
+    await this.db!.exec({
       sql: `DELETE FROM conversation_memory WHERE scope = ?1`,
       bind: [scope],
     });
@@ -815,7 +896,7 @@ export class KnowledgeStoreService {
   }): Promise<void> {
     await this.init();
     const now = Date.now();
-    this.db!.exec({
+    await this.db!.exec({
       sql: `
         INSERT INTO memory_summaries (
           id, scope, source_type, source_id, summary, keywords_json, created_at, updated_at
@@ -860,20 +941,20 @@ export class KnowledgeStoreService {
     keywords?: string[];
   }): Promise<void> {
     await this.init();
-    const existing = this.db!.selectObjects<MemorySummaryRow>(
+    const existing = (await this.db!.selectObjects<MemorySummaryRow>(
       `
         SELECT id, scope, source_type, source_id, summary, keywords_json, created_at, updated_at
         FROM memory_summaries
         WHERE id = ?1
       `,
       [record.id]
-    )[0];
+    ))[0];
 
     if (!existing) {
       throw new Error('Memory summary not found');
     }
 
-    this.db!.exec({
+    await this.db!.exec({
       sql: `
         UPDATE memory_summaries
         SET summary = ?2,
@@ -892,7 +973,7 @@ export class KnowledgeStoreService {
 
   async deleteMemorySummary(id: string): Promise<void> {
     await this.init();
-    this.db!.exec({
+    await this.db!.exec({
       sql: `DELETE FROM memory_summaries WHERE id = ?1`,
       bind: [id],
     });
@@ -900,7 +981,7 @@ export class KnowledgeStoreService {
 
   async clearMemorySummariesScope(scope: string): Promise<void> {
     await this.init();
-    this.db!.exec({
+    await this.db!.exec({
       sql: `DELETE FROM memory_summaries WHERE scope = ?1`,
       bind: [scope],
     });
@@ -932,6 +1013,274 @@ export class KnowledgeStoreService {
     // No-op: SQLite auto-commits in default mode
     // Keeping method for potential future use with explicit transactions
     console.log('[KnowledgeStore] forceCommit: auto-commit mode active');
+  }
+
+  // ===== BRAIN EXPORT/IMPORT FOR PERMANENT PRESERVATION =====
+
+  async exportBrain(): Promise<{
+    version: string;
+    exportedAt: number;
+    data: {
+      knowledgeDocuments: KnowledgeDocumentRow[];
+      knowledgeChunks: KnowledgeChunkRow[];
+      conversationMemory: ConversationMemoryRow[];
+      memorySummaries: MemorySummaryRow[];
+      seedPacks: SeedPackRow[];
+      toolRegistry: ToolRegistryRow[];
+    };
+  }> {
+    await this.init();
+    
+    const [documents, chunks, memory, summaries, packs, tools] = await Promise.all([
+      this.listDocuments(),
+      this.listChunks(),
+      this.listAllConversationMemory(),
+      this.listAllMemorySummaries(),
+      this.listSeedPacks(),
+      this.listToolRegistry()
+    ]);
+    
+    return {
+      version: '1.0.0',
+      exportedAt: Date.now(),
+      data: {
+        knowledgeDocuments: documents,
+        knowledgeChunks: chunks,
+        conversationMemory: memory,
+        memorySummaries: summaries,
+        seedPacks: packs,
+        toolRegistry: tools
+      }
+    };
+  }
+
+  async importBrain(
+    backup: {
+      version: string;
+      exportedAt: number;
+      data: {
+        knowledgeDocuments: KnowledgeDocumentRow[];
+        knowledgeChunks: KnowledgeChunkRow[];
+        conversationMemory: ConversationMemoryRow[];
+        memorySummaries: MemorySummaryRow[];
+        seedPacks: SeedPackRow[];
+        toolRegistry: ToolRegistryRow[];
+      };
+    },
+    mode: 'merge' | 'replace' = 'merge'
+  ): Promise<void> {
+    await this.init();
+    
+    // Validate backup format
+    if (!backup.version || !backup.data) {
+      throw new Error('Invalid backup format');
+    }
+    
+    const { data } = backup;
+    
+    await this.db!.transaction(async () => {
+      if (mode === 'replace') {
+        // Clear existing data - use separate calls for Capacitor SQLite compatibility
+        await this.db!.exec({ sql: 'DELETE FROM knowledge_chunks;', bind: [] });
+        await this.db!.exec({ sql: 'DELETE FROM knowledge_documents;', bind: [] });
+        await this.db!.exec({ sql: 'DELETE FROM conversation_memory;', bind: [] });
+        await this.db!.exec({ sql: 'DELETE FROM memory_summaries;', bind: [] });
+        await this.db!.exec({ sql: 'DELETE FROM seed_packs;', bind: [] });
+        await this.db!.exec({ sql: 'DELETE FROM tool_registry;', bind: [] });
+      }
+      
+      // Import knowledge documents
+      for (const doc of data.knowledgeDocuments) {
+        await this.db!.exec({
+          sql: `
+            INSERT OR ${mode === 'merge' ? 'IGNORE' : 'REPLACE'} INTO knowledge_documents (
+              document_id, document_name, asset_kind, source,
+              starter_pack_key, starter_pack_version, starter_pack_category,
+              created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+          `,
+          bind: [
+            doc.document_id,
+            doc.document_name,
+            doc.asset_kind,
+            doc.source,
+            doc.starter_pack_key,
+            doc.starter_pack_version,
+            doc.starter_pack_category,
+            doc.created_at || Date.now(),
+            doc.updated_at || Date.now()
+          ]
+        });
+      }
+      
+      // Import knowledge chunks
+      for (const chunk of data.knowledgeChunks) {
+        await this.db!.exec({
+          sql: `
+            INSERT OR ${mode === 'merge' ? 'IGNORE' : 'REPLACE'} INTO knowledge_chunks (
+              id, document_id, document_name, content, embedding_json, metadata_json,
+              asset_kind, source, starter_pack_key, starter_pack_version, starter_pack_category,
+              created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+          `,
+          bind: [
+            chunk.id,
+            chunk.document_id,
+            chunk.document_name,
+            chunk.content,
+            chunk.embedding_json,
+            chunk.metadata_json,
+            chunk.asset_kind,
+            chunk.source,
+            chunk.starter_pack_key,
+            chunk.starter_pack_version,
+            chunk.starter_pack_category,
+            chunk.created_at || Date.now(),
+            chunk.updated_at || Date.now()
+          ]
+        });
+      }
+      
+      // Import conversation memory
+      for (const mem of data.conversationMemory) {
+        await this.db!.exec({
+          sql: `
+            INSERT OR ${mode === 'merge' ? 'IGNORE' : 'REPLACE'} INTO conversation_memory (
+              id, scope, memory_type, title, content, tags_json, weight, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+          `,
+          bind: [
+            mem.id,
+            mem.scope,
+            mem.memory_type,
+            mem.title,
+            mem.content,
+            mem.tags_json,
+            mem.weight,
+            mem.created_at || Date.now(),
+            mem.updated_at || Date.now()
+          ]
+        });
+      }
+      
+      // Import memory summaries
+      for (const summary of data.memorySummaries) {
+        await this.db!.exec({
+          sql: `
+            INSERT OR ${mode === 'merge' ? 'IGNORE' : 'REPLACE'} INTO memory_summaries (
+              id, scope, source_type, source_id, summary, keywords_json, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+          `,
+          bind: [
+            summary.id,
+            summary.scope,
+            summary.source_type,
+            summary.source_id,
+            summary.summary,
+            summary.keywords_json,
+            summary.created_at || Date.now(),
+            summary.updated_at || Date.now()
+          ]
+        });
+      }
+      
+      // Import seed packs
+      for (const pack of data.seedPacks) {
+        await this.db!.exec({
+          sql: `
+            INSERT OR ${mode === 'merge' ? 'IGNORE' : 'REPLACE'} INTO seed_packs (
+              pack_id, pack_name, pack_type, version, description,
+              payload_json, enabled, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+          `,
+          bind: [
+            pack.pack_id,
+            pack.pack_name,
+            pack.pack_type,
+            pack.version,
+            pack.description,
+            pack.payload_json,
+            pack.enabled,
+            pack.created_at || Date.now(),
+            pack.updated_at || Date.now()
+          ]
+        });
+      }
+      
+      // Import tool registry
+      for (const tool of data.toolRegistry) {
+        await this.db!.exec({
+          sql: `
+            INSERT OR ${mode === 'merge' ? 'IGNORE' : 'REPLACE'} INTO tool_registry (
+              tool_id, display_name, description, capability_group, enabled,
+              input_schema_json, policy_json, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+          `,
+          bind: [
+            tool.tool_id,
+            tool.display_name,
+            tool.description,
+            tool.capability_group,
+            tool.enabled,
+            tool.input_schema_json,
+            tool.policy_json,
+            tool.created_at || Date.now(),
+            tool.updated_at || Date.now()
+          ]
+        });
+      }
+    });
+    
+    console.log(`[KnowledgeStore] Brain import completed in ${mode} mode`);
+  }
+
+  async listAllConversationMemory(): Promise<ConversationMemoryRow[]> {
+    await this.init();
+    return this.db!.selectObjects<ConversationMemoryRow>(`
+      SELECT id, scope, memory_type, title, content, tags_json, weight, created_at, updated_at
+      FROM conversation_memory
+      ORDER BY weight DESC, updated_at DESC
+    `);
+  }
+
+  async listAllMemorySummaries(): Promise<MemorySummaryRow[]> {
+    await this.init();
+    return this.db!.selectObjects<MemorySummaryRow>(`
+      SELECT id, scope, source_type, source_id, summary, keywords_json, created_at, updated_at
+      FROM memory_summaries
+      ORDER BY updated_at DESC
+    `);
+  }
+
+  async getBrainStats(): Promise<{
+    documents: number;
+    chunks: number;
+    memoryNotes: number;
+    summaries: number;
+    seedPacks: number;
+    tools: number;
+    totalSize: number;
+  }> {
+    await this.init();
+    
+    const [docCount, chunkCount, memoryCount, summaryCount, packCount, toolCount] = await Promise.all([
+      this.db!.selectObjects<{ count: number }>('SELECT COUNT(*) as count FROM knowledge_documents'),
+      this.db!.selectObjects<{ count: number }>('SELECT COUNT(*) as count FROM knowledge_chunks'),
+      this.db!.selectObjects<{ count: number }>('SELECT COUNT(*) as count FROM conversation_memory'),
+      this.db!.selectObjects<{ count: number }>('SELECT COUNT(*) as count FROM memory_summaries'),
+      this.db!.selectObjects<{ count: number }>('SELECT COUNT(*) as count FROM seed_packs'),
+      this.db!.selectObjects<{ count: number }>('SELECT COUNT(*) as count FROM tool_registry')
+    ]);
+    
+    return {
+      documents: docCount[0]?.count || 0,
+      chunks: chunkCount[0]?.count || 0,
+      memoryNotes: memoryCount[0]?.count || 0,
+      summaries: summaryCount[0]?.count || 0,
+      seedPacks: packCount[0]?.count || 0,
+      tools: toolCount[0]?.count || 0,
+      totalSize: docCount[0]?.count || 0 + chunkCount[0]?.count || 0 + memoryCount[0]?.count || 0
+    };
   }
 }
 

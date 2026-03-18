@@ -21,10 +21,42 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    const errorData = {
+      error: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      },
+      errorInfo: {
+        componentStack: errorInfo.componentStack,
+      },
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
+      timestamp: new Date().toISOString(),
+      url: typeof window !== 'undefined' ? window.location.href : 'N/A',
+    };
+
+    console.error('ErrorBoundary caught an error:', errorData);
+    
+    // Store error for potential reporting
+    try {
+      const errors = JSON.parse(localStorage.getItem('amo_errors') || '[]');
+      errors.push(errorData);
+      // Keep only last 10 errors
+      if (errors.length > 10) errors.shift();
+      localStorage.setItem('amo_errors', JSON.stringify(errors));
+    } catch (storageError) {
+      console.warn('Failed to store error data:', storageError);
+    }
   }
 
   public resetError = () => {
+    // Clear any stored errors for this session
+    try {
+      localStorage.removeItem('amo_errors');
+    } catch (storageError) {
+      console.warn('Failed to clear stored errors:', storageError);
+    }
+    
     this.setState({ hasError: false, error: null });
   };
 

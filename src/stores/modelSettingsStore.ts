@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { nativeOfflineLlmService } from '../services/nativeOfflineLlmService';
+import { AVAILABLE_OFFLINE_MODELS } from '../components/ModelDownloadManager';
 
 export interface LocalModel {
   id: string;
@@ -77,7 +78,20 @@ export const useModelSettingsStore = create<ModelSettingsState>((set, get) => ({
           set({ currentModelId: phi35Model.id });
           await nativeOfflineLlmService.setActiveModel({ relativePath: phi35Model.id });
         } else {
-          set({ currentModelId: models[0].id });
+          // Try to match by simple model ID if no direct match found
+          const simpleIdMatch = models.find(m => {
+            const simpleName = m.displayName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+            return AVAILABLE_OFFLINE_MODELS.some((model: any) => 
+              model.id === simpleName || 
+              m.displayName.toLowerCase().includes(model.id.replace(/-/g, ' '))
+            );
+          });
+          
+          if (simpleIdMatch) {
+            set({ currentModelId: simpleIdMatch.id });
+          } else {
+            set({ currentModelId: models[0].id });
+          }
         }
       }
     } catch (e) {
@@ -125,4 +139,8 @@ export function useLocalModels() {
     loadModels: state.loadLocalModels,
     setModel: state.setCurrentModel,
   }));
+}
+
+export function loadLocalModels() {
+  return useModelSettingsStore.getState().loadLocalModels();
 }

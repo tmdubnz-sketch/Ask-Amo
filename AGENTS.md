@@ -18,6 +18,10 @@
 - Capacitor Android files are checked in under `android/`.
 - Local AI features use Groq, WebLLM, browser APIs, and lightweight document retrieval.
 - The settings modal currently uses a five-tab top strip and includes in-app provider secret entry, native GGUF download/import controls, and URL-based knowledge import.
+- Amo's persona is neutral and locale-independent — no NZ Maori references.
+- Three superbrain seed packs (core reasoning, builder integration, conversation patterns) are seeded on first DB init.
+- Chain-of-thought reasoning is available for both cloud (deepThink mode) and native GGUF (structured CoT scaffold).
+- Builder bridge injects live vocabulary/sentence/intent state into every prompt context.
 
 **Repo Map**
 - `src/App.tsx`: main app shell, chat orchestration, uploads, voice, and settings UI.
@@ -29,9 +33,14 @@
 - `src/services/webLlmService.ts`: offline WebLLM wrapper.
 - `src/services/documentService.ts`: PDF/text parsing and chunking.
 - `src/services/vectorDbService.ts`: browser-side embedding store and similarity search.
+- `src/services/sqliteAdapter.ts`: async SQLite adapter layer — `WasmSQLiteAdapter` for browser, `CapacitorSQLiteAdapter` for native Android persistent storage.
 - `src/services/nativeOfflineLlmService.ts`: Android native GGUF runtime bridge, model import, and direct-download APIs.
 - `src/services/audioCaptureService.ts`: microphone capture helpers.
 - `src/services/speechT5Service.ts`: offline/browser speech synthesis helpers.
+- `src/services/builderBridgeService.ts`: unified read-only bridge that exposes vocabulary, sentence builder, and intent enhancer state as a snapshot for prompt injection.
+- `src/services/amoBrainService.ts`: high-level brain API — memory, facts, summaries, seed packs, and builder-aware fast context assembly.
+- `src/services/assistantPrompt.ts`: cloud model system prompt builder with chain-of-thought reasoning.
+- `src/services/nativeAssistantOrchestrator.ts`: native GGUF prompt builder with CoT scaffold and few-shot examples.
 - `src/index.css`: theme tokens, typography, glass styling, and shared utility classes.
 - `server.ts`: Vite middleware in dev, `dist/` hosting in production.
 
@@ -138,6 +147,9 @@
 **Persistence And IDs**
 - Chats are stored in `localStorage` under `amo_chats` with migration from `amo_chat_history`.
 - Knowledge chunks and metadata are persisted through `knowledgeStoreService`; agents should not assume the old `vector_db_docs` localStorage shape is authoritative.
+- On native Android, brain data uses `@capacitor-community/sqlite` via `CapacitorSQLiteAdapter` — stored in `/data/data/<package>/databases/` for true persistence across restarts and redeploys.
+- On browser, brain data uses SQLite WASM with `JsStorageDb` (localStorage-backed) via `WasmSQLiteAdapter`.
+- Both adapters implement the `AsyncSQLiteDb` interface from `src/services/sqliteAdapter.ts`; all `knowledgeStoreService` DB calls are async (`await`).
 - Use stable unique IDs for React keys and persisted entities.
 - Prefer `crypto.randomUUID()` when available; existing code falls back to timestamp + random for older support.
 - Be careful not to create duplicate message IDs during hydration or streaming.

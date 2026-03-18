@@ -1,7 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { browserService } from '../services/browserService';
 import { webViewBridgeService } from '../services/webViewBridgeService';
-import { Globe, ExternalLink, Loader2 } from 'lucide-react';
+import { webAssistService } from '../services/webAssistService';
+import { vectorDbService } from '../services/vectorDbService';
+import { Globe, ExternalLink, Loader2, BookOpen, Search, AlertCircle } from 'lucide-react';
+import { cn } from '../lib/utils';
+
+function resolveUrl(url: string): string {
+  if (!url) return '';
+  if (url === 'amo://dashboard') return '';
+  if (url.startsWith('amo://search?q=')) {
+    const query = decodeURIComponent(url.replace('amo://search?q=', ''));
+    return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  }
+  if (/^https?:\/\//i.test(url)) return url;
+  return `https://${url}`;
+}
 
 interface WebViewProps {
   url: string;
@@ -15,8 +29,31 @@ export function WebView({ url, onNavigate }: WebViewProps) {
     text: string;
     url: string;
   } | null>(null);
-  const [isFetching, setIsFetching] = useState(false);
   const [currentDisplayUrl, setCurrentDisplayUrl] = useState('');
+  const [isFetching, setIsFetching] = useState(false);
+  const [browserError, setBrowserError] = useState<string | null>(null);
+
+  const navigateTo = async (targetUrl: string) => {
+    const resolved = resolveUrl(targetUrl);
+    if (!resolved) return;
+
+    setCurrentDisplayUrl(resolved);
+    setAddressInput(resolved);
+    setBrowserError(null);
+
+    // Open in actual browser with error handling
+    const browserOpened = await browserService.open(resolved);
+    
+    if (browserOpened) {
+      console.info('[WebView] Browser opened successfully for:', resolved);
+    } else {
+      setBrowserError('Failed to open browser. Please check your browser settings and try again.');
+      console.warn('[WebView] Failed to open browser for:', resolved);
+    }
+
+    webViewBridgeService.onNavigate(resolved);
+    onNavigate?.(resolved);
+  };
 
   useEffect(() => {
     if (!url || url === 'amo://dashboard') return;
@@ -26,15 +63,10 @@ export function WebView({ url, onNavigate }: WebViewProps) {
       ? decodeURIComponent(url.replace('amo://search?q=', ''))
       : null;
     const resolvedUrl = isSearch
-      ? `https://www.google.com/search?q=${encodeURIComponent(query!)}`
+      ? `https://www.google.com/search?q=${encodeURI(query!)}`
       : /^https?:\/\//i.test(url) ? url : `https://${url}`;
 
-    setCurrentDisplayUrl(resolvedUrl);
-    setAddressInput(resolvedUrl);
-
-    void browserService.open(resolvedUrl);
-    webViewBridgeService.onNavigate(resolvedUrl);
-    onNavigate?.(resolvedUrl);
+    navigateTo(resolvedUrl);
 
     if (!isSearch) {
       setIsFetching(true);
@@ -55,8 +87,18 @@ export function WebView({ url, onNavigate }: WebViewProps) {
     setAddressInput(normalized);
     setFetchedContent(null);
     setIsFetching(true);
+    setBrowserError(null);
 
-    await browserService.open(normalized);
+    // Open in actual browser with error handling
+    const browserOpened = await browserService.open(normalized);
+    
+    if (browserOpened) {
+      console.info('[WebView] Browser opened successfully for:', normalized);
+    } else {
+      setBrowserError('Failed to open browser. Please check your browser settings and try again.');
+      console.warn('[WebView] Failed to open browser for:', normalized);
+    }
+
     webViewBridgeService.onNavigate(normalized);
     onNavigate?.(normalized);
 
@@ -100,6 +142,19 @@ export function WebView({ url, onNavigate }: WebViewProps) {
             <ExternalLink className="w-3.5 h-3.5 text-[#ff4e00] shrink-0" />
             <span className="text-xs text-white/60 truncate">{currentDisplayUrl}</span>
           </button>
+        )}
+
+        {browserError && (
+          <div className="flex items-center gap-2 p-3 rounded-xl border border-red-500/20 bg-red-500/5">
+            <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+            <span className="text-xs text-red-300 flex-1">{browserError}</span>
+            <button
+              onClick={() => setBrowserError(null)}
+              className="text-[10px] text-red-400/70 hover:text-red-400 transition-colors shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
         )}
 
         {fetchedContent && (

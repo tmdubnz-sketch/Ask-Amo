@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Download, Trash2, Loader2, Check, AlertCircle } from 'lucide-react';
 import { nativeOfflineLlmService, type NativeOfflineModelInfo } from '../services/nativeOfflineLlmService';
 import { cn } from '../lib/utils';
+import { useModelSettingsStore } from '../stores/modelSettingsStore';
 
 export interface DownloadableModel {
   id: string;
@@ -15,30 +16,9 @@ export const AVAILABLE_OFFLINE_MODELS: DownloadableModel[] = [
   {
     id: 'phi-3.5-mini',
     name: 'Phi-3.5 Mini',
-    description: 'Microsoft - best balance for mobile (recommended for S20)',
+    description: 'Microsoft - optimized for mobile (recommended for S20)',
     url: 'https://huggingface.co/lm-kit/phi-3.5-mini-3.8b-instruct-gguf/resolve/main/Phi-3.5-mini-Instruct-Q4_K_M.gguf',
     size: '~2.4 GB',
-  },
-  {
-    id: 'llama-3.2-1b',
-    name: 'Llama 3.2 1B',
-    description: 'Latest Llama - small and fast',
-    url: 'https://huggingface.co/unsloth/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf',
-    size: '~700 MB',
-  },
-  {
-    id: 'llama-3.2-3b',
-    name: 'Llama 3.2 3B',
-    description: 'Latest Llama - best quality',
-    url: 'https://huggingface.co/unsloth/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
-    size: '~1.9 GB',
-  },
-  {
-    id: 'tiny-llama',
-    name: 'TinyLlama 1.1B',
-    description: 'Fastest inference, lower capability',
-    url: 'https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf',
-    size: '~650 MB',
   },
 ];
 
@@ -51,11 +31,16 @@ interface ModelDownloadManagerProps {
 
 export function ModelDownloadManager({ downloadedModels = [], isDownloading, onDownload, onDelete }: ModelDownloadManagerProps) {
   const [error, setError] = useState<string | null>(null);
+  const { loadLocalModels } = useModelSettingsStore();
 
   const handleDownload = async (model: DownloadableModel) => {
     setError(null);
     try {
       onDownload?.(model);
+      // After download completes, refresh the model list
+      setTimeout(() => {
+        loadLocalModels();
+      }, 2000); // Give some time for the download to complete
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Download failed');
     }
@@ -64,6 +49,10 @@ export function ModelDownloadManager({ downloadedModels = [], isDownloading, onD
   const handleDelete = async (modelId: string) => {
     try {
       onDelete?.(modelId);
+      // After deletion, refresh the model list
+      setTimeout(() => {
+        loadLocalModels();
+      }, 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
     }

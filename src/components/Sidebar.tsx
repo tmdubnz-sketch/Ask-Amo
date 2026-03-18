@@ -71,9 +71,11 @@ interface SidebarProps {
   seedPackRows: SeedPackRow[];
   onRefreshNews: () => void;
   onClearCache: () => void;
-  onSwitchView: (view: 'chat' | 'webview' | 'terminal' | 'editor') => void;
+  onSwitchView: (view: 'chat' | 'webview' | 'terminal' | 'editor' | 'vocabulary' | 'sentence-builder' | 'intent-enhancer') => void;
   onRunCommand: (cmd: string) => void;
   onSaveCurrentPage: () => void;
+  onExportBrain: () => void;
+  onImportBrain: (file: File) => void;
   selectedModelId: string;
   availableModels: Array<{ id: string; name: string; description: string; family: string; isCloud?: boolean }>;
   onSelectModel: (modelId: string) => void;
@@ -182,9 +184,22 @@ function ActionItem({ icon: Icon, label, description, badge, onClick, danger }: 
 
 function QuickGrid({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-2 gap-1.5">{children}</div>; }
 
-function QuickBtn({ label, description, onClick, accent }: { label: string; description?: string; onClick: () => void; accent?: boolean }) {
+function QuickBtn({ label, description, onClick, accent, loading = false }: { label: string; description?: string; onClick: () => void; accent?: boolean; loading?: boolean }) {
   return (
-    <button onClick={onClick} className={cn('text-left p-2.5 rounded-xl border transition-all active:scale-[0.98]', accent ? 'border-[#ff4e00]/25 bg-[#ff4e00]/8 hover:bg-[#ff4e00]/14' : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/18')}>
+    <button 
+      onClick={onClick} 
+      disabled={loading}
+      className={cn(
+        'text-left p-2.5 rounded-xl border transition-all active:scale-[0.98] relative overflow-hidden',
+        accent ? 'border-[#ff4e00]/25 bg-[#ff4e00]/8 hover:bg-[#ff4e00]/14' : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/18',
+        loading && 'opacity-50 cursor-not-allowed'
+      )}
+    >
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+          <Loader2 className="w-4 h-4 text-white/60 animate-spin" />
+        </div>
+      )}
       <div className={cn('text-xs font-semibold', accent ? 'text-[#ff8a5c]' : 'text-white/80')}>{label}</div>
       {description && <div className="text-[9px] text-white/30 mt-0.5">{description}</div>}
     </button>
@@ -245,7 +260,7 @@ function FilesPanel(props: SidebarProps) {
       <PanelHeader title="Workspace files" subtitle="Imported docs and created files" />
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
         <SectionLabel>Knowledge imports</SectionLabel>
-        <ActionItem icon={HardDrive} label="Superbrain pack" description={props.areStarterPacksImported ? 'Loaded — NZ English, Te Reo, truth grounding' : 'Tap to load bundled knowledge'} badge={<StatusBadge status={props.areStarterPacksImported ? 'ok' : 'warn'} />} onClick={props.onWorkspaceSetup} />
+        <ActionItem icon={HardDrive} label="Superbrain pack" description={props.areStarterPacksImported ? 'Loaded — reasoning engine, builder patterns, conversation guides' : 'Tap to load bundled knowledge'} badge={<StatusBadge status={props.areStarterPacksImported ? 'ok' : 'warn'} />} onClick={props.onWorkspaceSetup} />
         {systemFiles.map(doc => <ActionItem key={doc.id} icon={Brain} label={doc.name} description="System · loaded" badge={<StatusBadge status="ok" />} />)}
         {workspaceFiles.length > 0 && (
           <>
@@ -283,7 +298,7 @@ function BrainPanel(props: SidebarProps) {
         </div>
         <SectionLabel>Actions</SectionLabel>
         <QuickGrid>
-          <QuickBtn label="Refresh news" description="Fetch latest NZ + world" onClick={props.onRefreshNews} accent />
+          <QuickBtn label="Refresh news" description="Fetch latest news" onClick={props.onRefreshNews} accent />
           <QuickBtn label="Clear cache" description="Reset web cache" onClick={props.onClearCache} />
         </QuickGrid>
         <SectionLabel>How Amo thinks</SectionLabel>
@@ -301,6 +316,22 @@ function BrainPanel(props: SidebarProps) {
 }
 
 function ToolsPanel(props: SidebarProps) {
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+
+  const handleQuickAction = async (action: string, type: 'command' | 'prompt' = 'command') => {
+    setLoadingAction(action);
+    try {
+      if (type === 'command') {
+        props.onRunCommand(action);
+      } else {
+        props.onSendPrompt(action);
+      }
+      props.onClose();
+    } finally {
+      setTimeout(() => setLoadingAction(null), 1000);
+    }
+  };
+
   return (
     <>
       <PanelHeader title="Quick actions" subtitle="Tap to activate any tool instantly" />
@@ -309,32 +340,53 @@ function ToolsPanel(props: SidebarProps) {
         <QuickGrid>
           <QuickBtn label="Chat" description="Return to main chat" onClick={() => { props.onSwitchView('chat'); props.onClose(); }} />
           <QuickBtn label="Terminal" description="Open shell" onClick={() => { props.onSwitchView('terminal'); props.onClose(); }} accent />
-          <QuickBtn label="Browser" description="Open WebView" onClick={() => { props.onSwitchView('webview'); props.onClose(); }} accent />
+          <QuickBtn label="Browser" description="Open web browser" onClick={() => { props.onSwitchView('webview'); props.onClose(); }} accent />
           <QuickBtn label="Editor" description="Open code editor" onClick={() => { props.onSwitchView('editor'); props.onClose(); }} accent />
+          <QuickBtn label="Vocabulary" description="Build vocabulary" onClick={() => { props.onSwitchView('vocabulary'); props.onClose(); }} accent />
+          <QuickBtn label="Sentence Builder" description="Build sentences" onClick={() => { props.onSwitchView('sentence-builder'); props.onClose(); }} accent />
+          <QuickBtn label="Intent Enhancer" description="Enhance intent prediction" onClick={() => { props.onSwitchView('intent-enhancer'); props.onClose(); }} accent />
         </QuickGrid>
-        <SectionLabel>IDE actions</SectionLabel>
+        
+        <SectionLabel>Development</SectionLabel>
         <QuickGrid>
-          <QuickBtn label="Run build" description="npm run build" onClick={() => props.onRunCommand('npm run build')} />
-          <QuickBtn label="Git status" description="Check changes" onClick={() => props.onRunCommand('git status')} />
-          <QuickBtn label="List files" description="Show workspace" onClick={() => props.onRunCommand('ls -la amo-workspace/')} />
-          <QuickBtn label="Install deps" description="npm install" onClick={() => props.onRunCommand('npm install')} />
-          <QuickBtn label="Run lint" description="npm run lint" onClick={() => props.onRunCommand('npm run lint')} />
-          <QuickBtn label="Git log" description="Recent commits" onClick={() => props.onRunCommand('git log --oneline -10')} />
+          <QuickBtn label="Run build" description="npm run build" loading={loadingAction === 'npm run build'} onClick={() => handleQuickAction('npm run build')} />
+          <QuickBtn label="Git status" description="Check changes" loading={loadingAction === 'git status'} onClick={() => handleQuickAction('git status')} />
+          <QuickBtn label="Install deps" description="npm install" loading={loadingAction === 'npm install'} onClick={() => handleQuickAction('npm install')} />
+          <QuickBtn label="Run lint" description="npm run lint" loading={loadingAction === 'npm run lint'} onClick={() => handleQuickAction('npm run lint')} />
+          <QuickBtn label="Git log" description="Recent commits" loading={loadingAction === 'git log --oneline -10'} onClick={() => handleQuickAction('git log --oneline -10')} />
+          <QuickBtn label="List files" description="Show workspace" loading={loadingAction === 'ls -la amo-workspace/'} onClick={() => handleQuickAction('ls -la amo-workspace/')} />
         </QuickGrid>
-        <SectionLabel>Knowledge actions</SectionLabel>
+        
+        <SectionLabel>Knowledge & Web</SectionLabel>
         <QuickGrid>
           <QuickBtn label="Save page" description="Import to brain" onClick={props.onSaveCurrentPage} accent />
           <QuickBtn label="Refresh news" description="Update feeds" onClick={props.onRefreshNews} accent />
           <QuickBtn label="Import file" description="Add document" onClick={props.onImportDoc} />
-          <QuickBtn label="Superbrain" description="Sync pack" onClick={props.onWorkspaceSetup} />
+          <QuickBtn label="Clear cache" description="Reset web cache" onClick={props.onClearCache} />
         </QuickGrid>
-        <SectionLabel>Say or type these</SectionLabel>
-        {[{ cmd: 'Amo', desc: 'Instant attention call' }, { cmd: 'stop', desc: 'Cancel current action' }, { cmd: 'new chat', desc: 'Start fresh conversation' }, { cmd: 'clear chat', desc: 'Wipe current messages' }].map(item => (
-          <button key={item.cmd} onClick={() => { props.onSendPrompt(item.cmd); props.onClose(); }} className="w-full flex items-center gap-2 px-2 py-2 rounded-xl hover:bg-white/[0.04] transition-all text-left group">
-            <code className="text-[11px] font-mono text-[#ff8a5c] bg-[#ff4e00]/10 px-1.5 py-0.5 rounded">{item.cmd}</code>
-            <span className="text-[10px] text-white/35">{item.desc}</span>
-          </button>
-        ))}
+        
+        <SectionLabel>Quick Commands</SectionLabel>
+        <div className="space-y-1">
+          {[
+            { cmd: 'Amo', desc: 'Instant attention call', type: 'prompt' as const },
+            { cmd: 'stop', desc: 'Cancel current action', type: 'prompt' as const },
+            { cmd: 'new chat', desc: 'Start fresh conversation', type: 'prompt' as const },
+            { cmd: 'clear chat', desc: 'Wipe current messages', type: 'prompt' as const },
+            { cmd: 'go to terminal', desc: 'Switch to terminal view', type: 'prompt' as const },
+            { cmd: 'show my files', desc: 'List workspace files', type: 'command' as const },
+          ].map(item => (
+            <button 
+              key={item.cmd} 
+              onClick={() => handleQuickAction(item.cmd, item.type)} 
+              disabled={loadingAction === item.cmd}
+              className="w-full flex items-center gap-2 px-2 py-2 rounded-xl hover:bg-white/[0.04] transition-all text-left group disabled:opacity-50"
+            >
+              <code className="text-[11px] font-mono text-[#ff8a5c] bg-[#ff4e00]/10 px-1.5 py-0.5 rounded">{item.cmd}</code>
+              <span className="text-[10px] text-white/35">{item.desc}</span>
+              {loadingAction === item.cmd && <Loader2 className="w-3 h-3 text-white/40 animate-spin" />}
+            </button>
+          ))}
+        </div>
       </div>
     </>
   );
@@ -357,12 +409,7 @@ function ModelsPanel(props: SidebarProps) {
           <select
             value={props.selectedModelId}
             onChange={(e) => {
-              const isNative = e.target.value.startsWith('native:');
-              if (isNative && props.onSelectNativeModel) {
-                props.onSelectNativeModel(e.target.value.replace('native:', ''));
-              } else {
-                props.onSelectModel(e.target.value);
-              }
+              props.onSelectModel(e.target.value);
             }}
             className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-[#ff4e00]/50 cursor-pointer"
           >
@@ -380,23 +427,12 @@ function ModelsPanel(props: SidebarProps) {
                 );
               })}
             </optgroup>
-            <optgroup label="WebLLM (browser)">
-              {props.availableModels.filter(m => m.family === 'webllm').map((model) => (
+            <optgroup label="Offline">
+              {props.availableModels.filter(m => !m.isCloud).map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.name}
                 </option>
               ))}
-            </optgroup>
-            <optgroup label="Offline (downloaded)">
-              {props.downloadedModels.length > 0 ? (
-                props.downloadedModels.map((modelId) => (
-                  <option key={`native:${modelId}`} value={`native:${modelId}`}>
-                    {modelId.replace(/-/g, ' ')}
-                  </option>
-                ))
-              ) : (
-                <option disabled>No models downloaded</option>
-              )}
             </optgroup>
           </select>
           <div className="text-[9px] text-white/30 mt-1.5 ml-1">
@@ -480,6 +516,21 @@ function HelpPanel(props: SidebarProps) {
 
 function SettingsPanel(props: SidebarProps) {
   const { temperature, topP, maxTokens, setTemperature, setTopP, setMaxTokens } = useModelSettingsStore();
+  const [importFile, setImportFile] = useState<File | null>(null);
+  
+  const handleImportClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        setImportFile(file);
+        props.onImportBrain(file);
+      }
+    };
+    input.click();
+  };
   
   return (
     <>
@@ -545,13 +596,16 @@ function SettingsPanel(props: SidebarProps) {
           </div>
         </div>
         
-        <SectionLabel>Data</SectionLabel>
+        <SectionLabel>Brain Data</SectionLabel>
         <div className="space-y-0.5">
+          <ActionItem icon={Download} label="Export brain" description="Download complete brain backup" onClick={props.onExportBrain} />
+          <ActionItem icon={HardDrive} label="Import brain" description="Restore from backup file" onClick={handleImportClick} />
           <ActionItem icon={Trash2} label="Clear all memory" description="Wipe brain notes and summaries" onClick={props.onClearMemory} danger />
           <ActionItem icon={Download} label="Export chat history" description="Save all conversations to file" onClick={props.onExportHistory} />
           <ActionItem icon={RefreshCw} label="Refresh news" description="Fetch latest NZ and world news" onClick={props.onRefreshNews} />
           <ActionItem icon={ExternalLink} label="Open in Chrome" description="Use Chrome instead of WebView for better WebGPU" onClick={props.onOpenInChrome} />
         </div>
+        
         <SectionLabel>About</SectionLabel>
         <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-1">
           <StatRow label="App" value="Ask-Amo" />

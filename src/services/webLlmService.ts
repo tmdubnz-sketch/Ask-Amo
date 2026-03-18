@@ -26,13 +26,13 @@ export class WebLlmService {
         { initProgressCallback: onProgress }
       );
       this.currentModelId = modelId;
-      console.log("[WebLLM] Engine initialized successfully!");
+      console.log("[WebLLM] Engine initialized successfully for model:", modelId);
       return this.engine;
     } catch (error) {
-      console.error("[WebLLM] Failed to initialize engine:", error);
+      console.error("[WebLLM] Failed to initialize engine for model:", modelId, error);
       // Add more context to the error
       const err = error as Error;
-      throw new Error(`WebLLM failed to load: ${err.message}. Make sure you're using Chrome with WebGPU enabled.`);
+      throw new Error(`WebLLM failed to load model "${modelId}": ${err.message}. Make sure you're using Chrome with WebGPU enabled.`);
     }
   }
 

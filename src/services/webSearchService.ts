@@ -389,23 +389,53 @@ Would you like to search online manually?
 
   async readPage(url: string, maxChars = 2000): Promise<WebPageSnapshot> {
     const normalizedUrl = normalizeUrl(url);
-    const response = await fetch(normalizedUrl);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    
+    try {
+      const response = await fetch(normalizedUrl, { signal: controller.signal });
+      clearTimeout(timeout);
 
-    if (!response.ok) {
-      throw new Error(`Failed to read page: ${response.status}`);
+      if (!response.ok) {
+        if (response.status === 408) {
+          throw new Error('Page read timed out. The website may be slow or unavailable.');
+        }
+        if (response.status === 404) {
+          throw new Error('Page not found. The URL may be incorrect or the page may have been removed.');
+        }
+        if (response.status === 403) {
+          throw new Error('Access denied. The website may block automated access.');
+        }
+        if (response.status >= 500) {
+          throw new Error('Website server error. The site may be temporarily unavailable.');
+        }
+        throw new Error(`Failed to read page: ${response.status}`);
+      }
+
+      const html = await response.text();
+      const text = stripHtml(html).slice(0, maxChars).trim();
+
+      const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+      const title = titleMatch?.[1]?.replace(/\s+/g, ' ').trim() || url;
+
+      return {
+        title,
+        url: normalizedUrl,
+        text,
+      };
+    } catch (error) {
+      clearTimeout(timeout);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Page read timed out. The website may be slow or unavailable.');
+      }
+      if (error instanceof Error && error.message.includes('fetch')) {
+        throw new Error('Network error: Cannot reach the website. Check your connection and the URL.');
+      }
+      if (error instanceof Error && error.message.includes('Failed to read')) {
+        throw error;
+      }
+      throw new Error(`Failed to read page: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-
-    const html = await response.text();
-    const text = stripHtml(html).slice(0, maxChars).trim();
-
-    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-    const title = titleMatch?.[1]?.replace(/\s+/g, ' ').trim() || url;
-
-    return {
-      title,
-      url: normalizedUrl,
-      text,
-    };
   }
 
   formatPageSnapshot(snapshot: WebPageSnapshot): string {

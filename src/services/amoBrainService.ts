@@ -5,6 +5,7 @@ import {
   type SeedPackRow,
   type ToolRegistryRow,
 } from './knowledgeStoreService';
+import { builderBridgeService } from './builderBridgeService';
 
 function trimText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
@@ -181,6 +182,12 @@ export const amoBrainService = {
         lines.push(`- ${pack.pack_name}: ${trimText(pack.description, 80)}`);
       }
     }
+
+    // Inject live builder state so Amo can reason over vocab/sentence/intent data
+    try {
+      const builderContext = await builderBridgeService.getBuilderContext();
+      if (builderContext) lines.push(builderContext);
+    } catch { /* builder state is optional */ }
 
     return lines.join('\n').trim();
   },

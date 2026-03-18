@@ -116,19 +116,31 @@ export function routeUserIntent(rawInput: string): IntentRouteResult {
 
   const isSelfKnowledgeQuery = selfKnowledgePatterns.some(p => p.test(lowered));
 
-  // --- 1. Small Talk & Greetings ---
+  // --- 0. IDE & Code Creation (check BEFORE greetings) ---
+  const ideKeywords = ['create', 'make', 'write', 'build', 'generate', 'run', 'execute', 'test', 'compile', 'start', 'launch', 'hello world', 'fizzbuzz', 'todo app', 'api', 'server', 'express', 'react', 'node', 'python', 'npm', 'pip', 'yarn', 'node', 'python', 'java', 'gcc', 'make', 'git', 'workspace', 'amo-workspace', 'project folder', 'file', 'app', 'project', 'script', 'function', 'class', 'component', 'html', 'css', 'js', 'ts', 'py', 'java', 'code'];
+  if (scoreIntent(lowered, ideKeywords) >= 2) {
+    return {
+      canonicalInput,
+      preferWebAssist: false,
+      forceRetrieval: false,
+    };
+  }
+
+  // --- 1. Small Talk & Greetings (but NOT if it looks like a coding task) ---
   const greetKeywords = ['hi', 'hey', 'hello', 'kia ora', 'kiaora', 'yo', 'sup', 'morning', 'afternoon', 'evening', 'chur', 'bro', 'cuz', 'g', 'how are you', 'how u', 'hows it', 'howsit', 'howsit going', 'how is it'];
   const greetWords = lowered.split(/\W+/).filter(Boolean);
-  if (scoreIntent(lowered, greetKeywords) >= 1 && greetWords.length <= 6) {
+  // Exclude if it contains coding-related words
+  const hasCodingWords = /\b(world|code|program|script|app|project|create|make|write|build|run|execute)\b/i.test(lowered);
+  if (scoreIntent(lowered, greetKeywords) >= 1 && greetWords.length <= 6 && !hasCodingWords) {
     if (lowered.includes('how') || lowered.includes('sup') || lowered.includes('status')) {
-      const replies = ['All good bro.', 'Sweet as bro.', 'Yea not bad.', 'I dont have feelings, but I am ready to help.'];
+      const replies = ['All good.', 'Sweet as.', 'Yea not bad.', 'I dont have feelings, but I am ready to help.'];
       const randomReply = replies[Math.floor(Math.random() * replies.length)];
       return { canonicalInput, instantReply: randomReply };
     }
     if (lowered.includes('chur')) return { canonicalInput, instantReply: 'Chur. What can I do for you?' };
     return {
       canonicalInput,
-      instantReply: 'Kia ora. How can I help you?',
+      instantReply: 'Hey. How can I help you?',
     };
   }
 

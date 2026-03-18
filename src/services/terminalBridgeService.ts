@@ -1,5 +1,7 @@
 // src/services/terminalBridgeService.ts
 
+import { createError, logError, ERROR_CODES, type AmoError } from './errorHandlingService';
+
 export interface TerminalResult {
   command: string;
   output: string;
@@ -62,9 +64,17 @@ export const terminalBridgeService = {
     const { timeoutMs = 20000, confirmed = false } = options;
 
     if (isDangerous(command) && !confirmed) {
+      const error = createError(
+        'TerminalBridge',
+        ERROR_CODES.TERMINAL_PERMISSION_DENIED,
+        `Blocked dangerous command: ${command}`,
+        `Blocked: "${command}" looks destructive. Ask Amo to confirm before running this.`,
+        false
+      );
+      
       const result: TerminalResult = {
         command,
-        output: `Blocked: "${command}" looks destructive. Ask Amo to confirm before running this.`,
+        output: error.userMessage,
         exitCode: -1,
         cwd: '',
         success: false,
@@ -89,7 +99,12 @@ export const terminalBridgeService = {
       });
 
       if (!response.ok) {
-        throw new Error(`Terminal API error: ${response.status}`);
+        throw createError(
+          'TerminalBridge',
+          ERROR_CODES.TERMINAL_COMMAND_FAILED,
+          `Terminal API error: ${response.status}`,
+          'Failed to execute command due to server error'
+        );
       }
 
       const data = await response.json();
@@ -110,6 +125,8 @@ export const terminalBridgeService = {
       return result;
 
     } catch (err) {
+      logError('TerminalBridge', err, `Command: ${command}`);
+      
       const result: TerminalResult = {
         command,
         output: err instanceof Error ? err.message : 'Terminal request failed.',

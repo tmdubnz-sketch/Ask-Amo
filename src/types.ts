@@ -18,7 +18,7 @@ export interface ModelConfig {
   name: string;
   description: string;
   size: string;
-  family: 'gemma' | 'qwen' | 'groq' | 'openrouter' | 'openai' | 'gemini' | 'mistral' | 'native' | 'webllm';
+  family: 'gemma' | 'qwen' | 'groq' | 'openrouter' | 'openai' | 'gemini' | 'mistral' | 'native';
   isCloud?: boolean;
   isVision?: boolean;
 }
@@ -108,29 +108,11 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
     isCloud: true
   },
   {
-    id: "amo-native-vision",
-    name: "Native Vision",
-    description: "Qwen2-VL 2B - local vision model. Requires mmproj file. Processes images offline.",
-    size: "2.5GB",
-    family: 'native',
-    isCloud: false,
-    isVision: true
-  },
-  {
     id: "amo-native-offline",
     name: "Native offline",
-    description: "Phi-3.5 Mini 3.8B Q4_K_M — best fit for Snapdragon 865. Strong reasoning, instruction following, and code. Runs fully offline with no internet needed.",
+    description: "Phi-3.5 Mini 3.8B Q4_K_M — optimized for mobile. Strong reasoning, instruction following, and code. Runs fully offline with no internet needed.",
     size: "2.4GB",
     family: 'native',
     isCloud: false
-  },
-  {
-    id: "Llama-3.2-3B-Instruct-webllm",
-    name: "WebLLM (Phi-3.5)",
-    description: "Phi-3.5 Mini - runs in browser via WebGPU. Smaller and faster.",
-    size: "~1GB",
-    family: 'webllm',
-    isCloud: false,
-    isVision: false
   }
 ];

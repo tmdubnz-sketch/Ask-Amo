@@ -1,7 +1,8 @@
 import { terminalBridgeService } from './terminalBridgeService';
-import { webViewBridgeService } from './webViewBridgeService';
+import { webBrowserService } from './webBrowserService';
+import { browserService } from './browserService';
 import { workspaceWriteService } from './workspaceWriteService';
-import { webAssistService } from './webAssistService';
+import { amoBrainService } from './amoBrainService';
 import type { ExtractedSlots } from './slotExtractorService';
 
 export type ToolUsed = 'terminal' | 'webview' | 'workspace' | 'websearch' | 'none';
@@ -18,6 +19,7 @@ function routeToTools(slots: ExtractedSlots): ToolUsed[] {
   const tools: ToolUsed[] = [];
   const { action, target } = slots;
 
+  // Terminal routing
   if (
     action === 'execute' ||
     (action === 'create' && target === 'editor') ||
@@ -27,6 +29,7 @@ function routeToTools(slots: ExtractedSlots): ToolUsed[] {
     tools.push('terminal');
   }
 
+  // Web/WebView routing
   if (
     target === 'webview' ||
     action === 'search' ||
@@ -36,15 +39,7 @@ function routeToTools(slots: ExtractedSlots): ToolUsed[] {
     tools.push('webview');
   }
 
-  if (
-    action === 'execute' ||
-    action === 'search' ||
-    slots.url !== null ||
-    (action === 'retrieve' && !target)
-  ) {
-    tools.push('webview');
-  }
-
+  // Web search routing
   if (
     action === 'search' ||
     (slots.qualifier === 'latest' || slots.qualifier === 'live') ||
@@ -53,14 +48,7 @@ function routeToTools(slots: ExtractedSlots): ToolUsed[] {
     tools.push('websearch');
   }
 
-  // Terminal routing - must come after other tool checks
-  if (
-    action === 'execute' ||
-    target === 'terminal'
-  ) {
-    tools.push('terminal');
-  }
-
+  // Workspace routing
   if (
     action === 'store' ||
     (action === 'create' && !target) ||
@@ -130,6 +118,17 @@ export const amoToolCoordinator = {
     const contextParts: string[] = [];
     const tools = routeToTools(slots);
 
+    // Check brain service for relevant context first
+    const brainContext = await amoBrainService.buildFastContext(chatId, userPrompt);
+    if (brainContext) {
+      contextParts.push(`[Memory context]\n${brainContext}`);
+    }
+
+    // Learn from user interactions
+    if (slots.action === 'store' || slots.target === 'knowledge') {
+      await amoBrainService.remember(chatId, 'User preference', userPrompt, ['tool-preference']);
+    }
+
     if (tools.includes('terminal') || slots.target === 'terminal') {
       result.viewSwitch = 'terminal';
 
@@ -139,6 +138,11 @@ export const amoToolCoordinator = {
         result.toolsUsed.push('terminal');
 
         contextParts.push(`[Terminal result]\n${termResult.formatted}`);
+
+        // Remember successful commands for future reference
+        if (termResult.success) {
+          await amoBrainService.rememberFact(chatId, `last-${command.split(' ')[0]}-command`, command);
+        }
 
         if (
           termResult.success &&
@@ -157,19 +161,24 @@ export const amoToolCoordinator = {
     if (tools.includes('webview') || tools.includes('websearch')) {
       if (slots.url) {
         result.viewSwitch = 'webview';
-        result.webViewUrl = slots.url;
+        result.webViewUrl = webBrowserService.resolveUrl(slots.url);
         result.toolsUsed.push('webview');
-        result.instantReply = `Opening ${slots.url} now.`;
-        webViewBridgeService.onNavigate(slots.url);
+        
+        // Check if browser opening is supported
+        if (browserService.isSupported()) {
+          result.instantReply = `Opening ${slots.url} in web browser.`;
+        } else {
+          result.instantReply = `I'll navigate to ${slots.url}, but browser opening may not be supported on this device.`;
+        }
       } else if (slots.topic && options.isOnline && options.isWebSearchEnabled) {
         result.viewSwitch = 'webview';
         const searchUrl = `amo://search?q=${encodeURIComponent(slots.topic)}`;
         result.webViewUrl = searchUrl;
         result.toolsUsed.push('websearch');
 
-        const webContent = await webAssistService.resolve(slots.topic);
+        const webContent = await webBrowserService.search(slots.topic);
         if (webContent) {
-          contextParts.push(`[Web search results for: ${slots.topic}]\n${webContent}`);
+          contextParts.push(`[Web search results for: ${slots.topic}]\n${webContent.results}`);
         }
       }
 
@@ -178,11 +187,11 @@ export const amoToolCoordinator = {
         options.currentWebViewUrl &&
         !options.currentWebViewUrl.startsWith('amo://')
       ) {
-        const snapshot = await webViewBridgeService.readCurrentPage(2500);
-        if (snapshot) {
+        const page = await webBrowserService.fetchPage(options.currentWebViewUrl, 2500);
+        if (page) {
           result.toolsUsed.push('webview');
           contextParts.push(
-            `[Current page content]\n${webViewBridgeService.formatForContext(snapshot)}`
+            `[Current page content]\n${webBrowserService.formatForContext(page)}`
           );
         }
       }
@@ -209,9 +218,13 @@ export const amoToolCoordinator = {
       }
 
       if (/\b(save (this|the) page|import (this|the) page|add (this|the) page to knowledge|remember this page)\b/i.test(userPrompt)) {
-        const importMsg = await webViewBridgeService.importCurrentPageToKnowledge();
-        result.toolsUsed.push('workspace');
-        result.instantReply = importMsg;
+        if (options.currentWebViewUrl && !options.currentWebViewUrl.startsWith('amo://')) {
+          const success = await webBrowserService.saveToKnowledge(options.currentWebViewUrl);
+          result.toolsUsed.push('workspace');
+          result.instantReply = success ? 'Page saved to your knowledge brain.' : 'Failed to save the page.';
+        } else {
+          result.instantReply = 'No web page is currently loaded to save.';
+        }
       }
     }
 

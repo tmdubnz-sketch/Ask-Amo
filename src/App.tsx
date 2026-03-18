@@ -5,6 +5,9 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { Browser } from '@capacitor/browser';
 import { ErrorBoundary, DefaultFallback } from './components/ErrorBoundary';
 import { performanceMonitoringService, usePerformanceMonitoring } from './services/performanceMonitoringService';
+import { ToastContainer, Toast } from './components/Toast';
+import { toastService } from './services/toastService';
+import { toastGuideService } from './services/toastGuideService';
 import { 
   Send, 
   Download, 
@@ -42,16 +45,18 @@ import {
   Brain,
   HardDrive,
 } from 'lucide-react';
-import { WebView } from './components/WebView';
+import { WebBrowser } from './components/WebBrowser';
 import { Terminal } from './components/Terminal';
 import { CodeEditor } from './components/CodeEditor';
+import { VocabularyBuilder } from './components/VocabularyBuilder';
+import { SentenceBuilder } from './components/SentenceBuilder';
+import { IntentEnhancer } from './components/IntentEnhancer';
 import { motion, AnimatePresence } from 'motion/react';
 import { groqService } from './services/groqService';
 import { openrouterService } from './services/openrouterService';
 import { openaiService } from './services/openaiService';
 import { mistralService } from './services/mistralService';
 import { geminiService } from './services/geminiService';
-import { webLlmService } from './services/webLlmService';
 import { documentService } from './services/documentService';
 import { useModelSettingsStore } from './stores/modelSettingsStore';
 import { injectFileContext } from './services/fileContextService';
@@ -109,7 +114,7 @@ type ModelAvailability = {
   reason: string | null;
   ready: boolean;
 };
-type LocalBackendKind = 'native-gguf' | 'webllm' | 'none';
+type LocalBackendKind = 'native-gguf' | 'none';
 type LocalBackendCapability = 'ready' | 'configured' | 'scaffold' | 'failed' | 'unavailable';
 type LocalRuntimeState = {
   backend: LocalBackendKind;
@@ -121,7 +126,7 @@ type LocalRuntimeState = {
   activeBackendModelId: string | null;
   reason: string | null;
 };
-type ActiveView = 'chat' | 'webview' | 'terminal' | 'editor';
+type AmoView = 'chat' | 'webview' | 'terminal' | 'editor' | 'vocabulary' | 'sentence-builder' | 'intent-enhancer';
 type LocalBackendDescriptor = {
   kind: LocalBackendKind;
   label: string;
@@ -164,17 +169,6 @@ const RECOMMENDED_NATIVE_DOWNLOADS = [
     label: 'Phi-3.5 Mini 3.8B Q4_K_M',
     description: 'Best for Snapdragon 865 - text only',
     url: 'https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf?download=true',
-  },
-  {
-    label: 'Qwen2-VL 2B Vision Q4_K_M',
-    description: 'Local vision model - sees images',
-    url: 'https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/Qwen2-VL-2B-Instruct-Q4_K_M.gguf?download=true',
-    mmprojUrl: 'https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/Qwen2-VL-2B-Instruct-mmproj-f16.gguf?download=true',
-  },
-  {
-    label: 'Llama 3.2 3B Q4_K_M',
-    description: 'Meta Llama - alternative',
-    url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf?download=true',
   },
 ] as const;
 
@@ -238,7 +232,7 @@ function normalizeWebUrl(value: string): string {
 }
 
 type AutoActionResult = {
-  view: ActiveView;
+  view: AmoView;
   reply: string;
   webUrl?: string;
 };
@@ -311,6 +305,13 @@ function getErrorMessage(error: unknown, fallback: string): string {
   if ( message.includes('401') || message.includes('authentication')) return 'API key is invalid or expired. Check your API key in Settings.';
   if (message.includes('Unsupported file type')) return 'That file type is not supported. Use PDF, TXT, or Markdown files.';
   if (message.includes('Setting up fake worker failed') || message.includes('Failed to fetch dynamically imported module') || message.includes('Loading chunk') || message.includes('Failed to load PDF')) return 'Could not open that PDF in this environment. Try again, or import a text or Markdown version instead.';
+  if (message.includes('timed out') || message.includes('timeout')) return 'Request timed out. Please check your connection and try again.';
+  if (message.includes('Network error') || message.includes('fetch')) return 'Network connection failed. Please check your internet connection and try again.';
+  if (message.includes('Terminal permission denied')) return 'Terminal access denied. Please check app permissions.';
+  if (message.includes('Native terminal error')) return message;
+  if (message.includes('Page not found') || message.includes('404')) return 'Web page not found. The URL may be incorrect or the page may have been removed.';
+  if (message.includes('Access denied') || message.includes('403')) return 'Access denied to web page. The site may block automated access.';
+  if (message.includes('Website server error') || message.includes('500')) return 'Website is experiencing server errors. Please try again later.';
   return message || fallback;
 }
 
@@ -465,42 +466,30 @@ function resolveLocalRuntimeState(options: any): LocalRuntimeState {
   const status = options.nativeOfflineStatus;
   const selectedModel = options.selectedModel || {};
   
-  // Detect WebLLM/browser model
-  const isWebLLM = 
-    selectedModel.runtime === 'webllm' ||
-    selectedModel.backend === 'webllm' ||
-    selectedModel.type === 'webllm' ||
-    selectedModel.id?.toLowerCase().includes('webllm') ||
-    selectedModel.family === 'webllm';
-
-  if (isWebLLM) {
-    // WebLLM/browser model path
-    const webReady = !!options.isWebLLMReady || !!options.loadedModelId;
+  // Native GGUF model path
+  if (selectedModel.family === 'native') {
+    const nativeReady = status?.modelLoaded && status?.activeModel;
     return {
-      backend: 'webllm',
-      backendLabel: 'WebLLM (Browser)',
-      capability: webReady ? 'ready' : 'configured',
+      backend: 'native-gguf',
+      backendLabel: 'Native GGUF',
+      capability: nativeReady ? 'ready' : status?.runtimeReady ? 'configured' : 'scaffold',
       selectedModelId: selectedModel.id,
-      activeNativeModelPath: null,
+      activeNativeModelPath: status?.activeModel?.relativePath || null,
       loadedModelId: options.loadedModelId,
-      activeBackendModelId: webReady ? selectedModel.id : null,
-      reason: webReady ? null : 'WebLLM model not yet loaded',
+      activeBackendModelId: nativeReady ? selectedModel.id : null,
+      reason: nativeReady ? null : status?.message || 'Native model not loaded',
     };
   }
 
-  // Native backend path
-  const ready = !!(options.isNativeOfflineAvailable && status?.runtimeReady && status?.modelLoaded);
-  const scaffold = !!(options.isNativeOfflineAvailable && status?.runtimeMode === 'scaffold');
-  const activeNativeModelPath = status?.activeModel?.relativePath || null;
-  
+  // No local backend - cloud models
   return {
-    backend: 'native-gguf',
-    backendLabel: 'Native GGUF',
-    capability: ready ? 'ready' : (activeNativeModelPath ? (scaffold ? 'scaffold' : 'configured') : 'unavailable'),
-    selectedModelId: options.selectedModelId,
-    activeNativeModelPath,
-    loadedModelId: options.loadedModelId,
-    activeBackendModelId: ready ? 'amo-native-offline' : null,
+    backend: 'none',
+    backendLabel: 'Cloud Only',
+    capability: 'ready',
+    selectedModelId: selectedModel.id,
+    activeNativeModelPath: null,
+    loadedModelId: null,
+    activeBackendModelId: null,
     reason: null,
   };
 }
@@ -564,9 +553,10 @@ export default function App({ ready = true }: AppProps) {
    const [isInitializing, setIsInitializing] = useState(true);
    const [input, setInput] = useState('');
    const [selectedImage, setSelectedImage] = useState<string | null>(null);
-   const [activeView, setActiveView] = useState<ActiveView>('chat');
+   const [activeView, setActiveView] = useState<AmoView>('chat');
    const [webViewUrl, setWebViewUrl] = useState('amo://dashboard');
    const [isWebAssistActive, setIsWebAssistActive] = useState(false);
+   const [toasts, setToasts] = useState<Toast[]>([]);
   
   const [brainMemoryRows, setBrainMemoryRows] = useState<ConversationMemoryRow[]>([]);
   const [brainSummaryRows, setBrainSummaryRows] = useState<MemorySummaryRow[]>([]);
@@ -627,6 +617,34 @@ export default function App({ ready = true }: AppProps) {
     })();
   }, [ready]);
 
+  // Toast service subscription and guide initialization
+  useEffect(() => {
+    const unsubscribe = toastService.subscribe((toasts) => {
+      setToasts(toasts);
+    });
+
+    // Initialize toast guides after a short delay
+    const initTimer = setTimeout(() => {
+      // Show welcome guide for new users
+      toastGuideService.showWelcomeGuide();
+      
+      // Show navigation tips
+      setTimeout(() => {
+        toastGuideService.showNavigationTips();
+      }, 3000);
+    }, 2000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(initTimer);
+    };
+  }, []);
+
+  // Track view changes for contextual guides
+  useEffect(() => {
+    toastGuideService.trackViewNavigation(activeView);
+  }, [activeView]);
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     
@@ -647,8 +665,19 @@ export default function App({ ready = true }: AppProps) {
   }, []);
 
   const refreshNativeOfflineStatus = async () => {
-    if (nativeOfflineLlmService.isAvailable()) {
-      setNativeOfflineStatus(await nativeOfflineLlmService.getStatus());
+    try {
+      if (nativeOfflineLlmService.isAvailable()) {
+        const status = await nativeOfflineLlmService.getStatus();
+        console.log('[App] Native status refreshed:', JSON.stringify({
+          runtimeReady: status?.runtimeReady,
+          modelLoaded: status?.modelLoaded,
+          activeModel: status?.activeModel?.relativePath || null,
+          availableModels: status?.availableModels?.map(m => m.relativePath) || [],
+        }));
+        setNativeOfflineStatus(status);
+      }
+    } catch (e) {
+      console.error('[App] refreshNativeOfflineStatus failed:', e);
     }
   };
 
@@ -787,19 +816,14 @@ export default function App({ ready = true }: AppProps) {
     try {
       if (selectedModel.family === 'native') {
         await ensureNativeOfflineReady();
-      } else if (selectedModel.family === 'webllm') {
-        // WebLLM - download and load in browser via WebGPU
-        await webLlmService.prepareModel(selectedModel.id, (p) => setDownloadStatus(`Loading: ${Math.round(p * 100)}%`));
-        setLoadedModelId(selectedModel.id);
-        setDownloadStatus('WebLLM model loaded!');
+        setDownloadStatus('Native model selected.');
       } else {
         // Cloud models - just switch (no download needed for API-based)
         setDownloadStatus('Cloud model selected.');
       }
     } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setIsLoading(false);
+      setError(getErrorMessage(e, 'Failed to prepare model'));
+      setDownloadStatus('');
     }
   };
 
@@ -846,9 +870,60 @@ export default function App({ ready = true }: AppProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `amo-history-${Date.now()}.json`;
+    a.download = `amo-chat-history-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // Toast handlers
+  const handleToastClose = (id: string) => {
+    toastService.remove(id);
+  };
+
+  const handleToastSpeechToggle = (id: string, enabled: boolean) => {
+    toastService.toggleSpeech(id, enabled);
+  };
+
+  const handleExportBrain = async () => {
+    try {
+      setDownloadStatus('Exporting brain data...');
+      const backup = await knowledgeStoreService.exportBrain();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `amo-brain-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setDownloadStatus('Brain exported successfully!');
+    } catch (error) {
+      console.error('Failed to export brain:', error);
+      setDownloadStatus('Failed to export brain data.');
+    }
+  };
+
+  const handleImportBrain = async (file: File) => {
+    try {
+      setDownloadStatus('Importing brain data...');
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      
+      // Validate backup format
+      if (!backup.version || !backup.data) {
+        throw new Error('Invalid backup format');
+      }
+      
+      await knowledgeStoreService.importBrain(backup, 'merge');
+      await refreshBrainState();
+      setDownloadStatus('Brain imported successfully!');
+    } catch (error) {
+      console.error('Failed to import brain:', error);
+      setDownloadStatus('Failed to import brain data.');
+    }
   };
 
   const handleRefreshNews = async () => {
@@ -872,17 +947,26 @@ export default function App({ ready = true }: AppProps) {
   };
 
   const handleSaveCurrentPage = async () => {
-    const { webViewBridgeService } = await import('./services/webViewBridgeService');
-    const msg = await webViewBridgeService.importCurrentPageToKnowledge();
-    setDownloadStatus(msg);
-    await syncUploadedDocsFromStorage();
+    if (webViewUrl && !webViewUrl.startsWith('amo://')) {
+      const { webBrowserService } = await import('./services/webBrowserService');
+      const success = await webBrowserService.saveToKnowledge(webViewUrl);
+      setDownloadStatus(success ? 'Page saved to your knowledge brain.' : 'Failed to save the page.');
+      await syncUploadedDocsFromStorage();
+    } else {
+      setDownloadStatus('No web page is currently loaded to save.');
+    }
   };
 
-  const handleRunQuickCommand = async (cmd: string) => {
-    setActiveView('terminal');
+  const handleRunQuickCommand = async (cmd: string, switchToTerminal = true) => {
+    if (switchToTerminal) {
+      setActiveView('terminal');
+    }
     setInput(cmd);
     inputRef.current = cmd;
-    await handleSend();
+    // Add a small delay to ensure the input is set before sending
+    setTimeout(() => {
+      handleSend();
+    }, 100);
   };
 
   const refreshBrainState = async () => {
@@ -954,19 +1038,18 @@ export default function App({ ready = true }: AppProps) {
     const savedModelId = localStorage.getItem('amo_selected_model_id');
     if (savedModelId) {
       const savedModel = AVAILABLE_MODELS.find((model) => model.id === savedModelId);
-      if (savedModel && savedModel.family !== 'native') return savedModel;
+      if (savedModel) return savedModel;
     }
 
     return getDefaultModelSelection();
   });
 
   const isNativeOfflineAvailable = nativeOfflineLlmService.isAvailable();
-  const localRuntimeState = resolveLocalRuntimeState({ 
-    nativeOfflineStatus, 
+  const localRuntimeState = resolveLocalRuntimeState({
     isNativeOfflineAvailable, 
+    nativeOfflineStatus,
     loadedModelId,
-    selectedModel,
-    isWebLLMReady: loadedModelId !== null && selectedModel?.family === 'webllm'
+    selectedModel
   });
 
   const isSelectedModelReady = selectedModel.isCloud 
@@ -1055,6 +1138,65 @@ export default function App({ ready = true }: AppProps) {
     void refreshBrainState();
     void refreshNativeOfflineStatus();
   }, [currentChatId]);
+
+  // Auto-initialize native runtime when native model is selected
+  useEffect(() => {
+    if (selectedModel.family !== 'native') return;
+    if (!nativeOfflineLlmService.isAvailable()) return;
+    
+    let cancelled = false;
+    (async () => {
+      try {
+        console.log('[App] Auto-initializing native runtime for selected native model...');
+        const status = await nativeOfflineLlmService.getStatus();
+        if (cancelled) return;
+        
+        console.log('[App] Native init status:', JSON.stringify({
+          runtimeReady: status?.runtimeReady,
+          modelLoaded: status?.modelLoaded,
+          activeModel: status?.activeModel?.relativePath || null,
+          availableCount: status?.availableModels?.length || 0,
+        }));
+        
+        setNativeOfflineStatus(status);
+        
+        if (!status?.runtimeReady) {
+          console.log('[App] Runtime not ready, preparing...');
+          await nativeOfflineLlmService.prepareRuntime();
+          if (cancelled) return;
+        }
+        
+        // Refresh status after preparation
+        const freshStatus = await nativeOfflineLlmService.getStatus();
+        if (cancelled) return;
+        setNativeOfflineStatus(freshStatus);
+        
+        // If model not loaded but available, try to load it
+        if (freshStatus && !freshStatus.modelLoaded && freshStatus.availableModels?.length > 0) {
+          const preferred = freshStatus.activeModel || freshStatus.availableModels[0];
+          console.log('[App] Loading native model:', preferred.relativePath);
+          try {
+            const loadResult = await nativeOfflineLlmService.loadModel({ relativePath: preferred.relativePath });
+            if (cancelled) return;
+            if (loadResult?.status) {
+              setNativeOfflineStatus(loadResult.status);
+              setLoadedModelId('amo-native-offline');
+              console.log('[App] Native model loaded successfully');
+            }
+          } catch (loadErr) {
+            console.error('[App] Failed to auto-load native model:', loadErr);
+          }
+        } else if (freshStatus?.modelLoaded) {
+          setLoadedModelId('amo-native-offline');
+          console.log('[App] Native model already loaded');
+        }
+      } catch (e) {
+        console.error('[App] Native auto-init failed:', e);
+      }
+    })();
+    
+    return () => { cancelled = true; };
+  }, [selectedModel.family]);
 
   useEffect(() => {
     if (!isSettingsOpen) return;
@@ -1239,11 +1381,10 @@ export default function App({ ready = true }: AppProps) {
          
         // Auto-switch to vision model if image is attached and current model doesn't support vision
         if (pendingImage && !selectedModel.isVision) {
-          // Prefer WebLLM vision (local/offline) if loaded, then cloud with vision
-          const webllmVision = loadedModelId ? AVAILABLE_MODELS.find(m => m.isVision && m.family === 'webllm' && m.id === loadedModelId) : null;
+          // Prefer cloud vision models
           const geminiVision = AVAILABLE_MODELS.find(m => m.isVision && m.family === 'gemini');
           const cloudVision = AVAILABLE_MODELS.find(m => m.isVision && m.isCloud);
-          const visionModel = webllmVision || geminiVision || cloudVision;
+          const visionModel = geminiVision || cloudVision;
           if (visionModel) {
             setSelectedModel(visionModel);
           }
@@ -1310,7 +1451,7 @@ export default function App({ ready = true }: AppProps) {
           { isOnline: navigator.onLine, isWebSearchEnabled, currentWebViewUrl: webViewUrl }
         );
 
-        if (toolResult.viewSwitch) setActiveView(toolResult.viewSwitch as ActiveView);
+        if (toolResult.viewSwitch) setActiveView(toolResult.viewSwitch as AmoView);
         if (toolResult.webViewUrl) setWebViewUrl(toolResult.webViewUrl);
 
         if (toolResult.instantReply && !toolResult.contextBlock) {
@@ -1362,24 +1503,6 @@ export default function App({ ready = true }: AppProps) {
                  throw new Error(`Unsupported cloud model family: ${selectedModel.family}`);
              }
              return result;
-           } else if (selectedModel.family === 'webllm') {
-             // WebLLM IDE support - browser-based offline generation
-             const webllmMessages = [
-               { role: 'system' as const, content: systemPrompt },
-               ...msgs.filter(m => m.role !== 'system').map(m => ({ 
-                 role: m.role as 'user' | 'assistant' | 'system', 
-                 content: m.content 
-               }))
-             ];
-             
-             try {
-               const reply = await webLlmService.generate(webllmMessages, (text) => {
-                 // WebLLM streaming callback would be handled here if needed
-               });
-               return reply;
-             } catch (e: any) {
-               throw new Error(`WebLLM IDE generation failed: ${e.message}`);
-             }
            }
            
            // Native offline model (llama.cpp via Android JNI)
@@ -1401,7 +1524,7 @@ export default function App({ ready = true }: AppProps) {
           isRequestCanceled: () => isRequestCanceled(requestId),
           onPartialReply: (text) => { if (!isRequestCanceled(requestId)) updateMessage(assistantId, text, false); },
           onStatus: (s) => { console.info('[IDE]', s); },
-          onViewSwitch: (v) => setActiveView(v as ActiveView),
+          onViewSwitch: (v) => setActiveView(v as AmoView),
           onWebViewUrl: (url) => setWebViewUrl(url),
           onPreviewFile: (_p, _c) => setActiveView('editor'),
           generate: generateFn,
@@ -1450,8 +1573,7 @@ export default function App({ ready = true }: AppProps) {
            ? await assistantRuntimeService.buildNativeContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, webContext: webSearchContext })
            : await assistantRuntimeService.buildContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, includeKnowledge: true, webContext: webSearchContext });
 
-          const nativeSelected = selectedModel.family === 'native';
-          const webllmSelected = selectedModel.family === 'webllm';
+         const nativeSelected = selectedModel.family === 'native';
           if (nativeSelected && localRuntimeState.capability !== 'ready') {
             try {
               await ensureNativeOfflineReady();
@@ -1461,14 +1583,8 @@ export default function App({ ready = true }: AppProps) {
             }
           }
 
-          // Check if WebLLM is ready - it must be loaded first
-          if (webllmSelected && loadedModelId !== selectedModel.id) {
-            setError('WebLLM model not loaded. Please tap the download button to load the model first.');
-            return;
-          }
-
-          // Check if model is ready - WebLLM is ready if loaded, cloud needs API key
-          if (!nativeSelected && !webllmSelected && !isSelectedModelReady) {
+          // Check if model is ready - cloud needs API key, native needs runtime ready
+          if (!nativeSelected && !isSelectedModelReady) {
             setError('The configured cloud model is not ready. Add an API key or select a different model.');
             return;
           }
@@ -1513,67 +1629,42 @@ export default function App({ ready = true }: AppProps) {
                    webContext: webSearchContext,
                  });
                  break;
-               case 'mistral':
-                 reply = await mistralService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
-                   deepThink: isDeepThinkEnabled,
-                   webContext: webSearchContext,
-                 });
-                 break;
-               default:
-                 throw new Error(`Unsupported cloud model family: ${runtimeModel.family}`);
-             }
-            } else if (runtimeModel.family === 'webllm') {
-              // WebLLM - browser-based offline model via WebGPU
-              const webllmUserMessage: any = { role: 'user' as const, content: userPrompt };
-              if (pendingImage && runtimeModel.isVision) {
-                webllmUserMessage.image = pendingImage;
-              }
-              const webllmMessages = [
-                { role: 'system' as const, content: 'You are Amo, a grounded New Zealand assistant.' },
-                ...history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-                webllmUserMessage
-              ];
-              
-              const handleWebLLMUpdate = (text: string) => {
-                if (isRequestCanceled(requestId)) return;
-                updateMessage(assistantId, text, true);
-              };
-              
-              try {
-                reply = await webLlmService.generate(webllmMessages, handleWebLLMUpdate);
-              } catch (e: any) {
-                // If WebLLM fails, fall back to error message
-                reply = `WebLLM error: ${e.message}. Try a different model or ensure WebGPU is available.`;
-              }
-           } else {
-              // Native offline model (llama.cpp via Android JNI)
-              const finalPrompt = userPrompt + (visionPromptSuffix || '');
-              const result = await nativeReplyCoordinator.generateAndCommit({
-               chatId: currentChatId,
-               userInput: finalPrompt,
-               knowledgeContext: bundle.knowledgeContext,
-               webContext: webSearchContext,
-               ensureReady: ensureNativeOfflineReady,
-               generate: p => nativeOfflineLlmService.generate({ prompt: p }),
-               onStatus: setNativeOfflineStatus,
-               onRuntimeState: setAmoRuntimeState,
-                onCommit: t => {
-                 if (isRequestCanceled(requestId)) return;
-                 updateMessage(assistantId, t, false);
-                 finalizeMessage(assistantId);
-               }
-              });
-              reply = result.text;
-             }
-
-           if (isRequestCanceled(requestId)) {
-             return;
-           }
+              case 'mistral':
+                reply = await mistralService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
+                  deepThink: isDeepThinkEnabled,
+                  webContext: webSearchContext,
+                });
+                break;
+              default:
+                throw new Error(`Unsupported cloud model family: ${runtimeModel.family}`);
+            }
 
             updateMessage(assistantId, reply, false);
             finalizeMessage(assistantId);
-           await persistExchangeToBrain(userPrompt, reply);
-           if (isVoiceModeRef.current) speak(reply);
+            await persistExchangeToBrain(userPrompt, reply);
+            if (isVoiceModeRef.current) speak(reply);
+          } else {
+            // Native offline model (llama.cpp via Android JNI)
+            const systemPrompt = bundle.combinedContext
+              ? `You are Amo, a grounded New Zealand assistant.\n\n${bundle.combinedContext}`
+              : 'You are Amo, a grounded New Zealand assistant.';
+            const prompt = `${systemPrompt}\n\n${history.map(m => `${m.role === 'user' ? 'User' : 'Amo'}: ${m.content}`).join('\n')}\nUser: ${userPrompt}\nAmo:`;
+            
+            try {
+              const result = await nativeOfflineLlmService.generate({
+                prompt,
+                temperature: 0.7,
+                max_tokens: 2048,
+              });
+              reply = result?.text?.trim() || 'No response from native model.';
+              updateMessage(assistantId, reply, false);
+              finalizeMessage(assistantId);
+              await persistExchangeToBrain(userPrompt, reply);
+              if (isVoiceModeRef.current) speak(reply);
+            } catch (e: any) {
+              setError(`Native model error: ${e.message}. Try a different model or ensure the model is loaded.`);
+            }
+          }
         });
       } catch (e: any) {
         setError(getErrorMessage(e, 'Failed.'));
@@ -1675,15 +1766,16 @@ export default function App({ ready = true }: AppProps) {
       const parsed = await documentService.parseFile(file);
       const id = crypto.randomUUID();
 
-      await vectorDbService.addDocument({
+      await knowledgeStoreService.upsertChunk({
         id,
         documentId: id,
         documentName: parsed.title || file.name,
         content: parsed.content,
+        embedding: new Array(1536).fill(0), // TODO: generate real embeddings
         metadata: {
           assetKind: 'document',
           format: parsed.format,
-          wordCount: String(parsed.wordCount),
+          wordCount: parsed.wordCount,
           ...parsed.metadata,
         },
       });
@@ -1714,11 +1806,12 @@ export default function App({ ready = true }: AppProps) {
     try {
       const id = crypto.randomUUID();
       const content = await file.text();
-      await vectorDbService.addDocument({
+      await knowledgeStoreService.upsertChunk({
         id,
         documentId: id,
         documentName: file.name,
         content,
+        embedding: new Array(1536).fill(0), // TODO: generate real embeddings
         metadata: { assetKind: 'skill' },
       });
       setUploadedDocs((current) => [...current, { id, name: file.name, kind: 'skill' }]);
@@ -2017,9 +2110,27 @@ export default function App({ ready = true }: AppProps) {
           onSwitchView={setActiveView}
           onRunCommand={handleRunQuickCommand}
           onSaveCurrentPage={handleSaveCurrentPage}
+          onExportBrain={handleExportBrain}
+          onImportBrain={handleImportBrain}
           selectedModelId={selectedModel.id}
           availableModels={AVAILABLE_MODELS}
-          onSelectModel={(id) => { const model = AVAILABLE_MODELS.find(m => m.id === id); if (model) setSelectedModel(model); }}
+          onSelectModel={(id) => { 
+            try {
+              console.log('[App] onSelectModel called with:', id);
+              const model = AVAILABLE_MODELS.find(m => m.id === id);
+              if (model) {
+                console.log('[App] Found model:', model.name, 'family:', model.family);
+                setSelectedModel(model);
+                localStorage.setItem('amo_selected_model_id', model.id);
+                console.log('[App] Model selection completed successfully');
+              } else {
+                console.error('[App] Model not found for ID:', id);
+              }
+            } catch (e: any) {
+              console.error('[App] Error in onSelectModel:', e);
+              setError(`Failed to select model: ${e.message}`);
+            }
+          }}
           nativeModelStatus={localRuntimeState.capability}
           nativeModelName={nativeOfflineStatus?.activeModel?.displayName || 'No model loaded'}
           hasGroqKey={hasGroqApiKey}
@@ -2037,15 +2148,14 @@ export default function App({ ready = true }: AppProps) {
           onSetOpenAiKey={setOpenAiApiKey}
           onSetOpenRouterKey={setOpenRouterApiKey}
           onSetMistralKey={setMistralApiKey}
-          downloadedModels={nativeOfflineStatus?.availableModels.map(m => m.relativePath) || []}
-          onSelectNativeModel={async (modelId) => {
-            try {
-              await nativeOfflineLlmService.setActiveModel({ relativePath: modelId });
-              await refreshNativeOfflineStatus();
-            } catch (e: any) {
-              setError(e.message);
-            }
-          }}
+          downloadedModels={(nativeOfflineStatus?.availableModels || []).map(m => {
+            const filename = m.relativePath.split('/').pop() || m.relativePath;
+            const modelIdMap: Record<string, string> = {
+              'Phi-3.5-mini-Instruct-Q4_K_M.gguf': 'phi-3.5-mini',
+            };
+            return modelIdMap[filename] || filename;
+          })}
+          onSelectNativeModel={undefined}
            onDownloadModel={async (model) => {
              setIsDownloadingNativeModel(true);
              setDownloadStatus(`Downloading ${model.name}...`);
@@ -2086,6 +2196,9 @@ export default function App({ ready = true }: AppProps) {
                  
                  setNativeOfflineStatus(mainResult.status);
                  setDownloadStatus(`Downloaded ${model.name} with vision support!`);
+                 // Refresh model list to make the downloaded model available in dropdown
+                 const { loadLocalModels } = await import('./stores/modelSettingsStore');
+                 await loadLocalModels();
                } else {
                  // Regular model download
                  const result = await nativeOfflineLlmService.downloadModel({
@@ -2096,6 +2209,9 @@ export default function App({ ready = true }: AppProps) {
                  if (result) {
                    setNativeOfflineStatus(result.status);
                    setDownloadStatus(`Downloaded ${model.name}!`);
+                   // Refresh model list to make the downloaded model available in dropdown
+                   const { loadLocalModels } = await import('./stores/modelSettingsStore');
+                   await loadLocalModels();
                  }
                }
              } catch (e: any) {
@@ -2112,6 +2228,9 @@ export default function App({ ready = true }: AppProps) {
             try {
               const status = await nativeOfflineLlmService.removeModel({ relativePath: model.relativePath });
               setNativeOfflineStatus(status);
+              // Refresh model list after deletion
+              const { loadLocalModels } = await import('./stores/modelSettingsStore');
+              await loadLocalModels();
             } catch (e: any) {
               setError(e.message);
             }
@@ -2135,11 +2254,16 @@ export default function App({ ready = true }: AppProps) {
 
         <main className="flex-1 flex flex-col relative overflow-hidden">
          <div className="border-b border-white/10 px-4 sm:px-6 py-3">
-           <div className="flex items-center gap-2 max-w-4xl mx-auto">
-<button onClick={() => setActiveView('chat')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all", activeView === 'chat' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Chat</button>
-               <button onClick={() => setActiveView('webview')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all", activeView === 'webview' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Android WebView</button>
-              <button onClick={() => setActiveView('terminal')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all", activeView === 'terminal' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Terminal</button>
-              <button onClick={() => setActiveView('editor')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all", activeView === 'editor' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Code Editor</button>
+           <div className="flex items-center gap-2 max-w-none overflow-x-auto custom-scrollbar">
+             <div className="flex items-center gap-2 flex-shrink-0">
+<button onClick={() => setActiveView('chat')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'chat' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Chat</button>
+              <button onClick={() => setActiveView('webview')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'webview' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Web Browser</button>
+              <button onClick={() => setActiveView('terminal')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'terminal' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Terminal</button>
+              <button onClick={() => setActiveView('editor')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'editor' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Code Editor</button>
+              <button onClick={() => setActiveView('vocabulary')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'vocabulary' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Vocabulary</button>
+              <button onClick={() => setActiveView('sentence-builder')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'sentence-builder' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Sentence Builder</button>
+              <button onClick={() => setActiveView('intent-enhancer')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'intent-enhancer' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Intent Enhancer</button>
+             </div>
            </div>
          </div>
 
@@ -2181,7 +2305,7 @@ export default function App({ ready = true }: AppProps) {
 
             {activeView === 'webview' && (
               <div className="h-full max-w-4xl mx-auto w-full min-h-[420px]">
-                <WebView url={webViewUrl} onNavigate={(url) => setWebViewUrl(url)} />
+                <WebBrowser url={webViewUrl} onNavigate={(url) => setWebViewUrl(url)} />
               </div>
             )}
 
@@ -2194,6 +2318,24 @@ export default function App({ ready = true }: AppProps) {
             {activeView === 'editor' && (
               <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
                 <CodeEditor />
+              </div>
+            )}
+
+            {activeView === 'vocabulary' && (
+              <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
+                <VocabularyBuilder />
+              </div>
+            )}
+
+            {activeView === 'sentence-builder' && (
+              <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
+                <SentenceBuilder />
+              </div>
+            )}
+
+            {activeView === 'intent-enhancer' && (
+              <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
+                <IntentEnhancer />
               </div>
             )}
           </div>
@@ -2232,6 +2374,13 @@ export default function App({ ready = true }: AppProps) {
           )}
         </main>
       </div>
+      
+      {/* Toast Container */}
+      <ToastContainer
+        toasts={toasts}
+        onClose={handleToastClose}
+        onSpeechToggle={handleToastSpeechToggle}
+      />
     </ErrorBoundary>
     </>
   );

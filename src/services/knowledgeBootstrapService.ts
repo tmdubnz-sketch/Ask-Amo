@@ -29,11 +29,12 @@ async function bootstrapCommunicationStyle(): Promise<void> {
   const existingDoc = existingDocs.find(doc => doc.document_id === AMO_COMMUNICATION_STYLE.id);
   if (existingDoc) return;
 
-  await vectorDbService.addDocument({
+  await knowledgeStoreService.upsertChunk({
     id: AMO_COMMUNICATION_STYLE.id,
     documentId: AMO_COMMUNICATION_STYLE.id,
     documentName: AMO_COMMUNICATION_STYLE.title,
     content: AMO_COMMUNICATION_STYLE.content,
+    embedding: new Array(1536).fill(0), // TODO: generate real embeddings
     metadata: {
       assetKind: 'skill',
       source: 'system',
@@ -50,18 +51,19 @@ async function bootstrapSelfKnowledge(): Promise<void> {
     const existingDoc = existingDocs.find(doc => doc.document_id === chunk.id);
     if (existingDoc) continue;
 
-    await vectorDbService.addDocument({
+    await knowledgeStoreService.upsertChunk({
       id: chunk.id,
       documentId: chunk.id,
       documentName: chunk.title,
       content: `${chunk.title}\nTags: ${chunk.tags.join(', ')}\n\n${chunk.content}`,
+      embedding: new Array(1536).fill(0), // TODO: generate real embeddings
       metadata: {
         assetKind: 'skill',
         source: 'system',
         isSelfKnowledge: true,
       },
     });
-    console.info(`[AskAmo] Bootstrapped self-knowledge: ${chunk.title}`);
+    console.info(`[AskAmo] Bootstrapped self knowledge: ${chunk.title}`);
   }
 }
 
@@ -73,11 +75,12 @@ async function bootstrapHelpKnowledge(): Promise<void> {
     const existingDoc = existingDocs.find(doc => doc.document_id === chunk.id);
     if (existingDoc) continue;
 
-    await vectorDbService.addDocument({
+    await knowledgeStoreService.upsertChunk({
       id: chunk.id,
       documentId: chunk.id,
       documentName: chunk.title,
       content: `${chunk.title}\nTags: ${chunk.tags.join(', ')}\n\n${chunk.content}`,
+      embedding: new Array(1536).fill(0), // TODO: generate real embeddings
       metadata: {
         assetKind: 'skill',
         source: 'system',
@@ -92,27 +95,69 @@ export const knowledgeBootstrapService = {
   async bootstrapAmoBrain(): Promise<void> {
     console.info('[Bootstrap] Starting brain population...');
 
-    await vectorDbService.init();
-    await vectorDbService.loadFromStorage();
-    console.info('[Bootstrap] Vector DB loaded, docs:', vectorDbService.getDocuments().length);
+    await knowledgeStoreService.init();
+    console.info('[Bootstrap] Knowledge store initialized');
+    
+    // Check if data already exists
+    const existingDocs = await knowledgeStoreService.listDocuments();
+    console.info('[Bootstrap] Existing documents count:', existingDocs.length);
+    
+    const existingMemory = await knowledgeStoreService.listAllConversationMemory();
+    console.info('[Bootstrap] Existing memory count:', existingMemory.length);
+    
+    const existingPacks = await knowledgeStoreService.listSeedPacks();
+    console.info('[Bootstrap] Existing seed packs count:', existingPacks.length);
 
-    await bootstrapSelfKnowledge();
-    console.info('[Bootstrap] Self knowledge bootstrapped');
+    try {
+      await bootstrapSelfKnowledge();
+      console.info('[Bootstrap] Self knowledge bootstrapped');
+    } catch (e) {
+      console.error('[Bootstrap] Self knowledge failed:', e);
+    }
 
-    await bootstrapHelpKnowledge();
-    console.info('[Bootstrap] Help knowledge bootstrapped');
+    try {
+      await bootstrapHelpKnowledge();
+      console.info('[Bootstrap] Help knowledge bootstrapped');
+    } catch (e) {
+      console.error('[Bootstrap] Help knowledge failed:', e);
+    }
 
-    await bootstrapCommunicationStyle();
-    console.info('[Bootstrap] Communication style bootstrapped');
+    try {
+      await bootstrapCommunicationStyle();
+      console.info('[Bootstrap] Communication style bootstrapped');
+    } catch (e) {
+      console.error('[Bootstrap] Communication style failed:', e);
+    }
 
-    await this.seedPermanentFacts();
-    console.info('[Bootstrap] Permanent facts seeded');
+    try {
+      await this.seedPermanentFacts();
+      console.info('[Bootstrap] Permanent facts seeded');
+    } catch (e) {
+      console.error('[Bootstrap] Permanent facts failed:', e);
+    }
 
-    await this.seedCommunicationExamples();
-    console.info('[Bootstrap] Communication examples seeded');
+    try {
+      await this.seedCommunicationExamples();
+      console.info('[Bootstrap] Communication examples seeded');
+    } catch (e) {
+      console.error('[Bootstrap] Communication examples failed:', e);
+    }
 
-    await this.seedStarterPackContent();
-    console.info('[Bootstrap] Starter pack content seeded');
+    try {
+      await this.seedStarterPackContent();
+      console.info('[Bootstrap] Starter pack content seeded');
+    } catch (e) {
+      console.error('[Bootstrap] Starter pack content failed:', e);
+    }
+
+    // Superbrain packs are already seeded during knowledgeStoreService.init()
+    console.info('[Bootstrap] Default superbrain packs already seeded during init');
+
+    // Final counts
+    const finalDocs = await knowledgeStoreService.listDocuments();
+    const finalMemory = await knowledgeStoreService.listAllConversationMemory();
+    const finalPacks = await knowledgeStoreService.listSeedPacks();
+    console.info('[Bootstrap] Final counts - Documents:', finalDocs.length, 'Memory:', finalMemory.length, 'Packs:', finalPacks.length);
 
     console.info('[Bootstrap] Brain population complete.');
   },
@@ -239,14 +284,15 @@ export const knowledgeBootstrapService = {
       }
 
       const docId = `pack:${pack.key}`;
-      const docs = vectorDbService.getDocuments();
-      const exists = docs.find(d => d.documentId === docId);
+      const docs = await knowledgeStoreService.listDocuments();
+      const exists = docs.find(d => d.document_id === docId);
       if (!exists) {
-        await vectorDbService.addDocument({
+        await knowledgeStoreService.upsertChunk({
           id: docId,
           documentId: docId,
           documentName: pack.name,
           content: pack.content,
+          embedding: new Array(1536).fill(0), // TODO: generate real embeddings
           metadata: {
             assetKind: pack.kind,
             source: 'starter-pack',
