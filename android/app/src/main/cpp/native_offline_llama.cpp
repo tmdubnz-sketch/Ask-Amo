@@ -134,15 +134,16 @@ std::string apply_template_locked(const std::string & prompt) {
         prompt.c_str()
     };
 
-    int32_t required = llama_chat_apply_template(g_model, nullptr, &message, 1, true, nullptr, 0);
+    // New API: llama_chat_apply_template takes template string instead of model pointer
+    const char * tmpl = nullptr;
+    int32_t required = llama_chat_apply_template(tmpl, &message, 1, true, nullptr, 0);
     if (required <= 0) {
         return prompt;
     }
 
     std::vector<char> buffer(static_cast<size_t>(required) + 1, '\0');
     int32_t written = llama_chat_apply_template(
-        g_model,
-        nullptr,
+        tmpl,
         &message,
         1,
         true,
@@ -163,7 +164,10 @@ bool tokenize_prompt_locked(const std::string & prompt, std::vector<llama_token>
         return false;
     }
 
-    int32_t required = -llama_tokenize(g_model, prompt.c_str(), static_cast<int32_t>(prompt.size()), nullptr, 0, true, true);
+    // New API: use llama_vocab instead of llama_model
+    const llama_vocab * vocab = llama_model_get_vocab(g_model);
+
+    int32_t required = -llama_tokenize(vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()), nullptr, 0, true, true);
     if (required <= 0) {
         error_message = "Failed to tokenize prompt.";
         return false;
@@ -171,7 +175,7 @@ bool tokenize_prompt_locked(const std::string & prompt, std::vector<llama_token>
 
     tokens.resize(static_cast<size_t>(required));
     int32_t written = llama_tokenize(
-        g_model,
+        vocab,
         prompt.c_str(),
         static_cast<int32_t>(prompt.size()),
         tokens.data(),
@@ -202,8 +206,11 @@ std::string token_to_piece_locked(llama_token token) {
         return "";
     }
 
+    // New API: use llama_vocab instead of llama_model
+    const llama_vocab * vocab = llama_model_get_vocab(g_model);
+
     char buffer[kTokenPieceBufferSize];
-    int32_t size = llama_token_to_piece(g_model, token, buffer, kTokenPieceBufferSize, 0, true);
+    int32_t size = llama_token_to_piece(vocab, token, buffer, kTokenPieceBufferSize, 0, true);
     if (size < 0) {
         return "";
     }
@@ -416,7 +423,8 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
 
         llama_token decoder_start = llama_model_decoder_start_token(g_model);
         if (decoder_start == LLAMA_TOKEN_NULL) {
-            decoder_start = llama_token_bos(g_model);
+            const llama_vocab * vocab = llama_model_get_vocab(g_model);
+            decoder_start = llama_vocab_bos(vocab);
         }
 
         prompt_tokens.clear();
@@ -468,7 +476,7 @@ Java_com_askamo_mobile_NativeOfflineLlmRuntime_nativeGenerate(
         if (generated_tokens == 0) {
              log_debug("generate:first_token=%d", token);
         }
-        if (token == llama_token_eos(g_model)) {
+        if (token == llama_vocab_eos(llama_model_get_vocab(g_model))) {
              log_debug("generate:eog token=%d", token);
             break;
         }

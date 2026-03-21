@@ -3,6 +3,7 @@ import { Message } from '../hooks/useMessages';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
 import { Copy, RefreshCw } from 'lucide-react';
+import { CodeSnippet } from './CodeSnippet';
 
 interface MessageListProps {
   messages: Message[];
@@ -59,6 +60,61 @@ const linkify = (text: string) => {
   });
 };
 
+// Parse message content and render code blocks separately
+const renderContent = (content: string, onCopy?: (text: string) => void): React.ReactNode => {
+  if (!content) return null;
+
+  const codeBlockRegex = /```(\w*)\s*\n?([\s\S]*?)```/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let keyIndex = 0;
+
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    // Add text before code block
+    if (match.index > lastIndex) {
+      const textPart = content.slice(lastIndex, match.index);
+      if (textPart.trim()) {
+        parts.push(
+          <span key={`text-${keyIndex++}`} className="whitespace-pre-wrap">
+            {linkify(textPart)}
+          </span>
+        );
+      }
+    }
+
+    // Add code block
+    const language = match[1] || '';
+    const code = match[2].trim();
+    if (code) {
+      parts.push(
+        <CodeSnippet
+          key={`code-${keyIndex++}`}
+          code={code}
+          language={language}
+          onCopy={onCopy}
+        />
+      );
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < content.length) {
+    const remaining = content.slice(lastIndex);
+    if (remaining.trim()) {
+      parts.push(
+        <span key={`text-${keyIndex++}`} className="whitespace-pre-wrap">
+          {linkify(remaining)}
+        </span>
+      );
+    }
+  }
+
+  return parts.length > 0 ? parts : <span className="whitespace-pre-wrap">{linkify(content)}</span>;
+};
+
 const MessageBubble: React.FC<MessageBubbleProps> = ({ 
   message, 
   assistantName,
@@ -91,10 +147,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           />
         )}
         <div className={cn(
-          "whitespace-pre-wrap",
           !isUser && "serif-content"
         )}>
-          {linkify(message.content)}
+          {renderContent(message.content, onCopy)}
           {message.isStreaming && (
             <span className="inline-block w-1.5 h-4 ml-1 bg-orange-400 animate-pulse align-middle" />
           )}

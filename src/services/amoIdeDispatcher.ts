@@ -2,6 +2,9 @@ import { terminalBridgeService } from './terminalBridgeService';
 import { workspaceWriteService } from './workspaceWriteService';
 import { webAssistService } from './webAssistService';
 import { webViewBridgeService } from './webViewBridgeService';
+import { sentenceBuilderService } from './sentenceBuilderService';
+import { vocabularyService } from './vocabularyService';
+import { intentEnhancementService } from './intentEnhancementService';
 import {
   extractToolCalls,
   stripToolCalls,
@@ -16,6 +19,8 @@ export interface DispatchResult {
   viewSwitch?: 'terminal' | 'editor' | 'webview';
   webViewUrl?: string;
   previewPath?: string;
+  editorCode?: string;
+  autoRun?: boolean;
 }
 
 export interface DispatchBatch {
@@ -67,6 +72,9 @@ async function executeTool(
           ? `File written: ${call.path} (${call.content.length} chars)`
           : `Write failed: ${writeResult.error}`,
         success: writeResult.success,
+        viewSwitch: writeResult.success ? 'editor' : undefined,
+        previewPath: writeResult.success ? call.path : undefined,
+        editorCode: writeResult.success ? call.content : undefined,
       };
     }
 
@@ -125,6 +133,58 @@ async function executeTool(
       };
     }
 
+    case 'install': {
+      const { manager, packages } = call;
+      const pkgList = packages.join(' ');
+
+      // Check if we're on Android (terminal tools not available)
+      const isNative = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.();
+      
+      if (isNative) {
+        return {
+          toolCall: call,
+          result: `Package installation via ${manager} is not available on Android.\n\nSupported on Android:\n• JavaScript/TypeScript — runs in browser sandbox (QuickJS)\n• Python — runs in browser sandbox (Pyodide)\n\nTo use ${manager}, deploy the app on a web server or use a development machine.`,
+          success: false,
+        };
+      }
+
+      let command: string;
+
+      switch (manager) {
+        case 'npm':
+          command = `npm install ${pkgList}`;
+          break;
+        case 'pip':
+          command = `pip install ${pkgList}`;
+          break;
+        case 'apt':
+          command = `apt-get install -y ${pkgList}`;
+          break;
+        case 'yarn':
+          command = `yarn add ${pkgList}`;
+          break;
+        case 'pnpm':
+          command = `pnpm add ${pkgList}`;
+          break;
+        default:
+          return {
+            toolCall: call,
+            result: `Unknown package manager: ${manager}. Supported: npm, pip, apt, yarn, pnpm`,
+            success: false,
+          };
+      }
+
+      const result = await terminalBridgeService.run(command, chatId, { timeoutMs: 120000 });
+      return {
+        toolCall: call,
+        result: result.success
+          ? `Installed ${pkgList} via ${manager}:\n${result.output}`
+          : `Failed to install ${pkgList} via ${manager}:\n${result.output}`,
+        success: result.success,
+        viewSwitch: 'terminal',
+      };
+    }
+
     case 'open_url': {
       webViewBridgeService.onNavigate(call.url);
       return {
@@ -134,6 +194,66 @@ async function executeTool(
         viewSwitch: 'webview',
         webViewUrl: call.url,
       };
+    }
+
+    case 'sentence_builder': {
+      try {
+        const generated = await sentenceBuilderService.generateSentence({
+          intent: call.input,
+          style: (call.style as any) || 'neutral',
+          context: call.context,
+        });
+        return {
+          toolCall: call,
+          result: `Sentence enhanced:\nOriginal: ${call.input}\nEnhanced: ${generated.text}\nConfidence: ${generated.confidence}`,
+          success: true,
+          viewSwitch: 'editor',
+        };
+      } catch (e) {
+        return {
+          toolCall: call,
+          result: `Sentence builder error: ${e instanceof Error ? e.message : 'Unknown error'}`,
+          success: false,
+        };
+      }
+    }
+
+    case 'vocabulary_builder': {
+      try {
+        const stats = await vocabularyService.getVocabularyStats();
+        return {
+          toolCall: call,
+          result: `Vocabulary stats:\nTotal words: ${stats.totalWords}\nMastered: ${stats.masteredWords}\nLearning: ${stats.learningWords}\nNew: ${stats.newWords}`,
+          success: true,
+          viewSwitch: 'editor',
+        };
+      } catch (e) {
+        return {
+          toolCall: call,
+          result: `Vocabulary builder error: ${e instanceof Error ? e.message : 'Unknown error'}`,
+          success: false,
+        };
+      }
+    }
+
+    case 'intent_enhancer': {
+      try {
+        const prediction = await intentEnhancementService.predictIntent({
+          userInput: call.text,
+          context: call.action || 'general',
+        });
+        return {
+          toolCall: call,
+          result: `Intent analysis:\nPredicted intent: ${prediction.intent}\nConfidence: ${prediction.confidence}\nReasoning: ${prediction.reasoning}`,
+          success: true,
+        };
+      } catch (e) {
+        return {
+          toolCall: call,
+          result: `Intent enhancer error: ${e instanceof Error ? e.message : 'Unknown error'}`,
+          success: false,
+        };
+      }
     }
 
     default: {

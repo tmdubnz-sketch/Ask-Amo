@@ -155,7 +155,23 @@ export class KnowledgeStoreService {
         console.log('[KnowledgeStore] Using NATIVE persistent storage');
       } catch (e) {
         console.error('[KnowledgeStore] Failed to open Capacitor SQLite:', e);
-        throw e;
+        console.warn('[KnowledgeStore] Falling back to WASM SQLite (volatile storage)');
+        // Fall back to WASM SQLite if Capacitor fails
+        const sqlite = await sqlite3InitModule() as unknown as SQLiteModule;
+        this.sqlite = sqlite;
+        
+        let rawDb: SQLiteDb;
+        if (sqlite.oo1.JsStorageDb && isBrowser()) {
+          console.log('[KnowledgeStore] Using localStorage-backed SQLite (fallback)');
+          console.log('[KnowledgeStore] Using VOLATILE storage - data will be lost on app close');
+          rawDb = new sqlite.oo1.JsStorageDb('amo-knowledge-store-fallback');
+        } else {
+          console.log('[KnowledgeStore] Using fallback file-based SQLite');
+          console.log('[KnowledgeStore] Using VOLATILE storage - data will be lost on app close');
+          rawDb = new sqlite.oo1.DB('/amo-knowledge-fallback.sqlite3', 'ct');
+        }
+        db = new WasmSQLiteAdapter(rawDb as any);
+        console.log('[KnowledgeStore] Fallback WASM SQLite adapter created');
       }
     } else {
       // Browser path: use SQLite WASM with localStorage-backed storage
@@ -178,18 +194,32 @@ export class KnowledgeStoreService {
     try {
       // PRAGMAs must run individually — capacitor-sqlite's execute() cannot
       // mix PRAGMAs with DDL in a single batch reliably.
-      await db.exec('PRAGMA journal_mode = WAL;');
-      await db.exec('PRAGMA synchronous = NORMAL;');
-      await db.exec('PRAGMA temp_store = MEMORY;');
-      await db.exec('PRAGMA foreign_keys = ON;');
+      console.log('[KnowledgeStore] Setting PRAGMAs...');
+      
+      try {
+        await db.exec('PRAGMA journal_mode = WAL;');
+        await db.exec('PRAGMA synchronous = NORMAL;');
+        await db.exec('PRAGMA temp_store = MEMORY;');
+        await db.exec('PRAGMA foreign_keys = ON;');
+        console.log('[KnowledgeStore] ✓ PRAGMAs set');
+      } catch (pragmaError) {
+        console.warn('[KnowledgeStore] PRAGMA execution had issues (continuing anyway):', pragmaError);
+        // PRAGMAs are performance optimizations, not critical for functionality
+        // The adapter will log which ones succeeded and which ones failed
+        // Continue with database initialization regardless
+      }
 
-      // DDL batch — CREATE TABLE / CREATE INDEX
+      // DDL - Create each table individually for better error handling
+      console.log('[KnowledgeStore] Creating tables...');
+      
       await db.exec(`
         CREATE TABLE IF NOT EXISTS app_meta (
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
         );
       `);
+      console.log('[KnowledgeStore] ✓ app_meta table created');
+      
       await db.exec(`
         CREATE TABLE IF NOT EXISTS knowledge_documents (
           document_id TEXT PRIMARY KEY,
@@ -203,6 +233,8 @@ export class KnowledgeStoreService {
           updated_at INTEGER NOT NULL
         );
       `);
+      console.log('[KnowledgeStore] ✓ knowledge_documents table created');
+      
       await db.exec(`
         CREATE TABLE IF NOT EXISTS knowledge_chunks (
           id TEXT PRIMARY KEY,
@@ -221,8 +253,11 @@ export class KnowledgeStoreService {
           FOREIGN KEY (document_id) REFERENCES knowledge_documents(document_id) ON DELETE CASCADE
         );
       `);
+      console.log('[KnowledgeStore] ✓ knowledge_chunks table created');
       await db.exec('CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document_id ON knowledge_chunks(document_id);');
       await db.exec('CREATE INDEX IF NOT EXISTS idx_knowledge_documents_updated_at ON knowledge_documents(updated_at DESC);');
+      console.log('[KnowledgeStore] ✓ knowledge_documents indexes created');
+      
       await db.exec(`
         CREATE TABLE IF NOT EXISTS conversation_memory (
           id TEXT PRIMARY KEY,
@@ -236,6 +271,8 @@ export class KnowledgeStoreService {
           updated_at INTEGER NOT NULL
         );
       `);
+      console.log('[KnowledgeStore] ✓ conversation_memory table created');
+      
       await db.exec('CREATE INDEX IF NOT EXISTS idx_conversation_memory_scope ON conversation_memory(scope, updated_at DESC);');
       await db.exec(`
         CREATE TABLE IF NOT EXISTS memory_summaries (
@@ -249,6 +286,8 @@ export class KnowledgeStoreService {
           updated_at INTEGER NOT NULL
         );
       `);
+      console.log('[KnowledgeStore] ✓ memory_summaries table created');
+      
       await db.exec('CREATE INDEX IF NOT EXISTS idx_memory_summaries_scope ON memory_summaries(scope, updated_at DESC);');
       await db.exec(`
         CREATE TABLE IF NOT EXISTS tool_registry (
@@ -263,6 +302,8 @@ export class KnowledgeStoreService {
           updated_at INTEGER NOT NULL
         );
       `);
+      console.log('[KnowledgeStore] ✓ tool_registry table created');
+      
       await db.exec(`
         CREATE TABLE IF NOT EXISTS seed_packs (
           pack_id TEXT PRIMARY KEY,
@@ -276,15 +317,12 @@ export class KnowledgeStoreService {
           updated_at INTEGER NOT NULL
         );
       `);
+      console.log('[KnowledgeStore] ✓ seed_packs table created');
 
-      await db.exec({
-        sql: `
-          INSERT INTO app_meta(key, value)
-          VALUES('schema_version', ?1)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        `,
-        bind: [String(SCHEMA_VERSION)],
-      });
+      // Simplified INSERT without parameters to avoid issues
+      console.log('[KnowledgeStore] Setting schema version...');
+      await db.exec(`INSERT OR IGNORE INTO app_meta(key, value) VALUES('schema_version', '${SCHEMA_VERSION}')`);
+      console.log('[KnowledgeStore] ✓ Schema version set');
 
       await this.migrateLegacyVectors(db);
       console.log('[KnowledgeStore] Legacy vectors migrated');
@@ -298,17 +336,15 @@ export class KnowledgeStoreService {
       this.db = db;
       console.log('[KnowledgeStore] Database initialization complete');
       
-      // Log initial data counts
-      setTimeout(async () => {
-        try {
-          const memoryCount = await this.getMemoryCount();
-          const summaryCount = await this.getSummaryCount();
-          const factCount = await this.getPermanentFactCount();
-          console.log('[KnowledgeStore] Initial data - Memories:', memoryCount, 'Summaries:', summaryCount, 'Facts:', factCount);
-        } catch (e) {
-          console.error('[KnowledgeStore] Failed to get initial counts:', e);
-        }
-      }, 1000);
+       // Log initial data counts
+       setTimeout(async () => {
+         try {
+           const stats = await this.getBrainStats();
+           console.log('[KnowledgeStore] Initial data - Memories:', stats.memoryNotes, 'Summaries:', stats.summaries, 'Chunks:', stats.chunks);
+         } catch (e) {
+           console.error('[KnowledgeStore] Failed to get initial counts:', e);
+         }
+       }, 1000);
     } catch (error) {
       throw error;
     }

@@ -10,6 +10,7 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -22,6 +23,14 @@ import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { terminalService } from '../services/terminalService';
 import { runCode, runPython } from '../utils/codeRunner';
 import { cn } from '../lib/utils';
+
+// Get the workspace path for running files
+const getWorkspacePath = (): string => {
+  if (Capacitor.isNativePlatform()) {
+    return '/storage/emulated/0/Documents/AskAmo';
+  }
+  return './amo-workspace';
+};
 
 export type CodeLanguage = 
   | 'python' 
@@ -54,6 +63,8 @@ interface CodeEditorProps {
   onGenerate?: (prompt: string, context: string) => void;
   suggestedCode?: string | null;
   onApplySuggestion?: (code: string) => void;
+  autoRun?: boolean;
+  onOutputCapture?: (output: string) => void;
 }
 
 const LANGUAGE_EXTENSIONS: Record<string, CodeLanguage> = {
@@ -154,6 +165,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   onRun,
   onGenerate,
   suggestedCode: initialSuggestedCode,
+  autoRun = false,
+  onOutputCapture,
 }) => {
   const [code, setCode] = useState(initialCode);
   const [suggestedCode, setSuggestedCode] = useState<string | null>(initialSuggestedCode || null);
@@ -167,11 +180,37 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const editorViewRef = useRef<EditorView | null>(null);
   const sessionIdRef = useRef(crypto.randomUUID());
 
+  // Update editor when initialCode prop changes (e.g., from processCodeBlocks)
   useEffect(() => {
-    if (initialSuggestedCode !== undefined) {
-      setSuggestedCode(initialSuggestedCode);
+    if (initialCode) {
+      setCode(initialCode);
+      // Update editor view if it exists
+      if (editorViewRef.current) {
+        editorViewRef.current.dispatch({
+          changes: { from: 0, to: editorViewRef.current.state.doc.length, insert: initialCode }
+        });
+      }
     }
-  }, [initialSuggestedCode]);
+  }, [initialCode]);
+
+  // Update filename when prop changes
+  useEffect(() => {
+    if (initialFileName && initialFileName !== 'untitled.py') {
+      setFileName(initialFileName);
+      setLanguage(detectLanguage(initialFileName));
+    }
+  }, [initialFileName]);
+
+  // Auto-run code when autoRun flag is set (Amo-controlled execution)
+  useEffect(() => {
+    if (autoRun && initialCode && code) {
+      // Small delay to let editor render
+      const timer = setTimeout(() => {
+        handleRun();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoRun, initialCode]);
 
   useEffect(() => {
     const lang = detectLanguage(fileName);
@@ -265,43 +304,69 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     setIsRunning(true);
     setRunOutput('');
     
+    let outputText = '';
+    
     try {
-      // Use quickjs for JavaScript/TypeScript (sandboxed offline execution)
+      // Use QuickJS for JavaScript/TypeScript (browser sandbox - no Node.js needed)
       if (language === 'javascript' || language === 'typescript') {
         const result = await runCode(code);
         if (result.error) {
-          setRunOutput(`Error: ${result.error}`);
+          outputText = `Error: ${result.error}`;
         } else {
-          setRunOutput(result.output.join('\n') || 'Done.');
+          outputText = result.output.join('\n') || 'Done.';
         }
+        setRunOutput(outputText);
         setIsRunning(false);
+        if (onOutputCapture) onOutputCapture(outputText);
         return;
       }
       
-      // Use Pyodide for Python (sandboxed offline execution)
+      // Use Pyodide for Python (browser sandbox - no Python install needed)
       if (language === 'python') {
         const result = await runPython(code);
         if (result.error) {
-          setRunOutput(`Error: ${result.error}`);
+          outputText = `Error: ${result.error}`;
         } else {
-          setRunOutput(result.output.join('\n') || 'Done.');
+          outputText = result.output.join('\n') || 'Done.';
         }
+        setRunOutput(outputText);
         setIsRunning(false);
+        if (onOutputCapture) onOutputCapture(outputText);
         return;
       }
-      
-      // Fall back to terminal service for other languages
+
+      // For all other languages, use terminal (requires tools installed on device)
+      const workspacePath = getWorkspacePath();
       let command: string;
       
       if (language === 'shell') {
-        command = `echo '${code.replace(/'/g, "'\\''")}' | bash`;
+        command = `cd "${workspacePath}" && echo '${code.replace(/'/g, "'\\''")}' | bash`;
       } else {
         const cmd = LANGUAGE_COMMANDS[language];
         if (cmd) {
-          command = `${cmd} ${fileName}`;
+          const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const fullPath = `${workspacePath}/${safeName}`;
+          
+          // Create workspace dir and write file
+          await terminalService.exec({
+            command: `mkdir -p "${workspacePath}"`,
+            sessionId: sessionIdRef.current,
+            timeoutMs: 5000,
+          });
+          
+          await terminalService.exec({
+            command: `cat > '${fullPath}' << 'EOFAMO'\n${code}\nEOFAMO`,
+            sessionId: sessionIdRef.current,
+            timeoutMs: 5000,
+          });
+          
+          // Run from workspace directory
+          command = `cd "${workspacePath}" && ${cmd} "${safeName}"`;
         } else {
-          setRunOutput(`Run command not configured for ${LANGUAGE_LABELS[language]}`);
+          outputText = `Run not available for ${LANGUAGE_LABELS[language]}.\nSupported browserside: JavaScript, TypeScript, Python.\nOther languages need tools installed on device.`;
+          setRunOutput(outputText);
           setIsRunning(false);
+          if (onOutputCapture) onOutputCapture(outputText);
           return;
         }
       }
@@ -312,9 +377,17 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         timeoutMs: 30000,
       });
 
-      setRunOutput(result.output || (result.exitCode === 0 ? 'Done.' : `[exit ${result.exitCode}]`));
+      if (result.output.includes('command not found') || result.output.includes('not found')) {
+        outputText = `${result.output}\n\nTip: Use the install tool to add dependencies:\n{"tool":"install","manager":"apt","packages":["python3"]}`;
+      } else {
+        outputText = result.output || (result.exitCode === 0 ? 'Done.' : `[exit ${result.exitCode}]`);
+      }
+      setRunOutput(outputText);
+      if (onOutputCapture) onOutputCapture(outputText);
     } catch (error) {
-      setRunOutput(error instanceof Error ? error.message : 'Run failed');
+      outputText = error instanceof Error ? error.message : 'Run failed';
+      setRunOutput(outputText);
+      if (onOutputCapture) onOutputCapture(outputText);
     } finally {
       setIsRunning(false);
     }

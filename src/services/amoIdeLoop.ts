@@ -102,7 +102,16 @@ export async function runIdeLoop(options: IdeLoopOptions): Promise<IdeLoopResult
       // Handle view switches and previews
       if (batch.viewSwitch) onViewSwitch(batch.viewSwitch);
       if (batch.webViewUrl) onWebViewUrl(batch.webViewUrl);
-      if (batch.previewPath) {
+      
+      // For write tool results, pass code directly to editor
+      for (const r of batch.results) {
+        if (r.toolCall.tool === 'write' && r.success && r.editorCode) {
+          const path = (r.toolCall as any).path || 'file.txt';
+          onPreviewFile(path, r.editorCode);
+        }
+      }
+      
+      if (batch.previewPath && !batch.results.some(r => r.toolCall.tool === 'write' && r.success)) {
         const content = await readFileForPreview(batch.previewPath, chatId);
         onPreviewFile(batch.previewPath, content);
         ideCtx.openFile = batch.previewPath;
@@ -148,10 +157,10 @@ export async function runIdeLoop(options: IdeLoopOptions): Promise<IdeLoopResult
         consecutiveErrors = 0; // Reset error counter on success
       }
 
-      // Check if task is complete (no errors and at least 2 iterations)
-      if (!batch.hasErrors && iterations >= 2) {
-        // Continue one more iteration to ensure completion
-        continue;
+      // Check if task is complete (no errors, some work done, at least 2 iterations)
+      if (!batch.hasErrors && iterations >= 2 && (filesCreated.length > 0 || commandsRun.length > 0)) {
+        // Task appears complete - break to generate summary
+        break;
       }
 
     } catch (error) {
@@ -170,17 +179,23 @@ export async function runIdeLoop(options: IdeLoopOptions): Promise<IdeLoopResult
   }
 
   if (!finalReply && toolResultHistory.length > 0) {
-    const summaryMessages = [
-      ...messages,
-      {
-        role: 'user',
-        content: 'Summarize what you did, what files were created, and whether the task succeeded.',
-      },
-    ];
-    const ideSystemPrompt = buildIdeSystemPrompt(ideCtx);
-    const fullSystem = [baseContext, '---', ideSystemPrompt].join('\n\n');
-    finalReply = await generate(summaryMessages, fullSystem);
-    onPartialReply(finalReply);
+    try {
+      const summaryMessages = [
+        ...messages,
+        {
+          role: 'user',
+          content: 'Summarize what you did, what files were created, and whether the task succeeded.',
+        },
+      ];
+      const ideSystemPrompt = buildIdeSystemPrompt(ideCtx);
+      const fullSystem = [baseContext, '---', ideSystemPrompt].join('\n\n');
+      finalReply = await generate(summaryMessages, fullSystem);
+      onPartialReply(finalReply);
+    } catch (summaryError) {
+      console.error('[IDE Loop] Summary generation failed:', summaryError);
+      finalReply = `Task completed. Created ${filesCreated.length} file(s), ran ${commandsRun.length} command(s).`;
+      onPartialReply(finalReply);
+    }
   }
 
   return {

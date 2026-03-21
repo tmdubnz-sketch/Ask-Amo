@@ -71,6 +71,12 @@ export class SpeechT5Service {
 
     console.log(`[SpeechT5] Generating audio for: "${text}"`);
     
+    // Resume AudioContext if suspended (browser autoplay policy)
+    if (this.audioContext.state === 'suspended') {
+      console.log('[SpeechT5] Resuming suspended AudioContext...');
+      await this.audioContext.resume();
+    }
+    
     // Generate audio
     const result = await this.synthesizer(text, {
       speaker_embeddings: this.speakerEmbeddings
@@ -93,6 +99,10 @@ export class SpeechT5Service {
     source.buffer = audioBuffer;
     source.connect(this.audioContext.destination);
     source.start();
+  }
+
+  isReady(): boolean {
+    return this.synthesizer !== null && this.speakerEmbeddings !== null && this.audioContext !== null;
   }
 }
 

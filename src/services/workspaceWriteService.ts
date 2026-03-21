@@ -1,7 +1,14 @@
+import { Capacitor } from '@capacitor/core';
 import { terminalService } from './terminalService';
 import { vectorDbService } from './vectorDbService';
 
-const DEFAULT_WORKSPACE = '/data/local/tmp/ask-amo-workspace';
+// Use app-accessible storage — /data/local/tmp requires root on Android
+const getWorkspacePath = (): string => {
+  if (Capacitor.isNativePlatform()) {
+    return '/storage/emulated/0/Documents/AskAmo';
+  }
+  return './amo-workspace';
+};
 
 export interface FileOperationResult {
   success: boolean;
@@ -17,9 +24,10 @@ export interface WorkspaceFile {
 
 export const workspaceWriteService = {
   async ensureWorkspace(): Promise<boolean> {
+    const workspacePath = getWorkspacePath();
     try {
       const result = await terminalService.exec({
-        command: `mkdir -p ${DEFAULT_WORKSPACE}`,
+        command: `mkdir -p "${workspacePath}"`,
         sessionId: 'workspace-init',
       });
       return result.exitCode === 0;
@@ -30,14 +38,23 @@ export const workspaceWriteService = {
   },
 
   async writeFile(filename: string, content: string): Promise<FileOperationResult> {
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const path = `${DEFAULT_WORKSPACE}/${safeName}`;
-
-    const escapedContent = content
-      .replace(/\\/g, '\\\\')
-      .replace(/'/g, "'\\''")
-      .replace(/\$/g, '\\$')
-      .replace(/`/g, '\\`');
+    const workspacePath = getWorkspacePath();
+    
+    // Preserve directory structure and dotfiles — only sanitize dangerous characters
+    const safeName = filename
+      .replace(/\.\./g, '.')           // prevent path traversal
+      .replace(/[;&|`$(){}]/g, '_');   // remove shell metacharacters
+    const path = `${workspacePath}/${safeName}`;
+    
+    // Create parent directories if path contains subdirectories
+    const dirPart = safeName.includes('/') ? safeName.substring(0, safeName.lastIndexOf('/')) : '';
+    if (dirPart) {
+      await terminalService.exec({
+        command: `mkdir -p "${workspacePath}/${dirPart}"`,
+        sessionId: 'workspace-write',
+        timeoutMs: 5000,
+      });
+    }
 
     const cmd = `cat > '${path}' << 'EOFAMO'\n${content}\nEOFAMO`;
 
@@ -58,8 +75,11 @@ export const workspaceWriteService = {
   },
 
   async readFile(filename: string): Promise<string | null> {
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const path = `${DEFAULT_WORKSPACE}/${safeName}`;
+    const workspacePath = getWorkspacePath();
+    const safeName = filename
+      .replace(/\.\./g, '.')
+      .replace(/[;&|`$(){}]/g, '_');
+    const path = `${workspacePath}/${safeName}`;
 
     try {
       const result = await terminalService.exec({
@@ -81,9 +101,10 @@ export const workspaceWriteService = {
   },
 
   async listFiles(_chatId?: string): Promise<WorkspaceFile[]> {
+    const workspacePath = getWorkspacePath();
     try {
       const result = await terminalService.exec({
-        command: `ls -la ${DEFAULT_WORKSPACE}`,
+        command: `ls -la "${workspacePath}"`,
         sessionId: 'workspace-list',
       });
 
@@ -113,7 +134,9 @@ export const workspaceWriteService = {
     if (!content) return false;
 
     try {
-      const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeName = filename
+        .replace(/\.\./g, '.')
+        .replace(/[;&|`$(){}]/g, '_');
       await vectorDbService.addDocument({
         id: `workspace:${safeName}`,
         documentId: `workspace:${safeName}`,
@@ -129,8 +152,11 @@ export const workspaceWriteService = {
   },
 
   async deleteFile(filename: string): Promise<boolean> {
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const path = `${DEFAULT_WORKSPACE}/${safeName}`;
+    const workspacePath = getWorkspacePath();
+    const safeName = filename
+      .replace(/\.\./g, '.')
+      .replace(/[;&|`$(){}]/g, '_');
+    const path = `${workspacePath}/${safeName}`;
 
     try {
       const result = await terminalService.exec({

@@ -119,7 +119,7 @@ export const amoBrainService = {
     return match?.content ?? null;
   },
 
-  async buildFastContext(scope: string, query: string): Promise<string> {
+  async buildFastContext(scope: string, query: string, forceRetrieval = false): Promise<string> {
     const appScope = 'app:ask-amo';
     const [scopeMemories, appMemories, scopeSummaries, appSummaries, packs] = await Promise.all([
       knowledgeStoreService.listConversationMemory(scope),
@@ -150,7 +150,8 @@ export const amoBrainService = {
     // Always take top results regardless of score — never return empty
     const topMemories = scoredMemories.slice(0, 4).map(s => s.memory);
     const topSummaries = scoredSummaries.slice(0, 3).map(s => s.summary);
-    const activePacks = packs.slice(0, 3);
+    // Include more seed packs for capability/identity questions
+    const activePacks = forceRetrieval ? packs.slice(0, 5) : packs.slice(0, 3);
 
     const lines: string[] = [];
 

@@ -15,8 +15,12 @@ export type IdeToolCall =
   | { tool: 'read';    path: string }
   | { tool: 'list';    path?: string }
   | { tool: 'preview'; path: string }
+  | { tool: 'install'; manager: string; packages: string[] }
   | { tool: 'search';  query: string }
-  | { tool: 'open_url'; url: string };
+  | { tool: 'open_url'; url: string }
+  | { tool: 'sentence_builder'; input: string; style?: string; context?: string; purpose?: string }
+  | { tool: 'vocabulary_builder'; action: string; topic?: string }
+  | { tool: 'intent_enhancer'; text: string; action: string };
 
 export function buildIdeSystemPrompt(ctx: IdeContext): string {
   const fileList = ctx.recentFiles.length > 0
@@ -34,7 +38,58 @@ continuing. Do not complete tasks by chaining tool calls silently — think out 
 
 OPERATING MODE: Advanced Mobile IDE Agent with Full Tool Integration
 
-You are Amo acting as a comprehensive mobile IDE with advanced capabilities across all domains. You have direct access to the device filesystem, terminal, code editor, web browser, vocabulary builder, sentence builder, and intent enhancer. You must use these tools to complete tasks — do not just describe what to do.
+You are Amo acting as a comprehensive mobile IDE with advanced capabilities across all domains. You have direct access to the device filesystem, terminal, code editor, web browser, vocabulary builder, sentence builder, and intent enhancer. 
+
+CRITICAL: You MUST ACTUALLY EXECUTE TASKS using tools:
+- Use <<<TOOL>>>run<<<END>>> to EXECUTE terminal commands and show REAL output
+- Use <<<TOOL>>>write<<<END>>> to CREATE/MODIFY files with actual content
+- Use <<<TOOL>>>read<<<END>>> to INSPECT existing files
+- NEVER just describe what you would do - ACTUALLY DO IT
+- Show users the REAL RESULTS of your actions, not theoretical steps
+
+HOW TOOLS CONNECT TO THE UI:
+1. write(path, content):
+   → Saves file to workspace storage
+   → Opens Code Editor view automatically
+   → Shows code with syntax highlighting
+   → User can click Run to execute
+
+2. run(command):
+   → Executes in terminal
+   → Output captured and returned to you
+   → Terminal view opens to show execution
+
+3. read(path):
+   → Reads file content
+   → Returns content to you as context
+
+4. preview(path):
+   → Opens file in Code Editor
+   → User sees the code
+
+5. install(manager, packages):
+   → Runs package manager (npm, pip)
+   → NOT available on Android — use browser-side execution instead
+
+EXECUTION FLOW:
+When you write code:
+1. write → file saved → editor opens
+2. run → command executes → output captured
+3. Output returned to you as context
+4. You can fix errors and re-run
+
+When output contains errors:
+→ Read the error message
+→ Fix the code
+→ write again with fixed content
+→ run again
+→ Repeat until success
+
+PLATFORM NOTES:
+• Android: No npm/node/pip — use browser sandbox execution
+• JavaScript/TypeScript: Runs via QuickJS (browser sandbox)
+• Python: Runs via Pyodide (browser sandbox)
+• Shell commands: Run via Android terminal (basic shell only)
 
 You are a master of:
 - Web Assist: Research, information gathering, and online resource utilization
@@ -67,6 +122,7 @@ Available tools:
 2. write — create or overwrite a file
    {"tool":"write","path":"amo-workspace/hello.js","content":"console.log('Hello world');"}
    - Always use full relative paths from project root
+   - File is automatically written to the Code Editor
 
 3. read — read a file's content
    {"tool":"read","path":"amo-workspace/package.json"}
@@ -77,20 +133,26 @@ Available tools:
 5. preview — open a file in the code editor
    {"tool":"preview","path":"amo-workspace/hello.js"}
 
-6. search — search the web for comprehensive information
+6. install — install dependencies (npm, pip, etc.)
+   {"tool":"install","manager":"npm","packages":["express","cors"]}
+   {"tool":"install","manager":"pip","packages":["numpy","pandas"]}
+   NOTE: On Android, npm/pip/apt are NOT available. Use browser-side execution instead.
+   JavaScript/TypeScript/Python run in browser sandbox — no install needed.
+
+7. search — search the web for comprehensive information
    {"tool":"search","query":"how to use express middleware"}
 
-7. open_url — open a URL in the browser for detailed exploration
+8. open_url — open a URL in the browser for detailed exploration
    {"tool":"open_url","url":"https://nodejs.org/docs"}
 
-8. vocabulary_builder — extract and enhance vocabulary from text
-   {"tool":"vocabulary_builder","text":"sample text to analyze","action":"extract"}
+9. vocabulary_builder — get vocabulary statistics
+   {"tool":"vocabulary_builder","action":"stats"}
 
-9. sentence_builder — construct and improve sentences
-   {"tool":"sentence_builder","input":"basic sentence","action":"enhance"}
+10. sentence_builder — construct and improve sentences
+    {"tool":"sentence_builder","input":"basic sentence","style":"formal","context":"professional email"}
 
-10. intent_enhancer — analyze and enhance communication intent
-   {"tool":"intent_enhancer","text":"message to analyze","action":"optimize"}
+11. intent_enhancer — analyze communication intent
+    {"tool":"intent_enhancer","text":"message to analyze","action":"optimize"}
 
 AGENTIC WORKFLOW RULES:
 1. When given a task, think through the steps briefly then start acting.

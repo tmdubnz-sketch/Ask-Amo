@@ -14,11 +14,11 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(CapacitorSQLitePlugin.class);
-        registerPlugin(NativeOfflineLlmPlugin.class);
         registerPlugin(NativeTtsPlugin.class);
+        registerPlugin(NativeTerminalPlugin.class);
+        registerPlugin(NativeOfflineLlmPlugin.class);
         registerPlugin(NativePiperVoicePlugin.class);
         registerPlugin(SecretStorePlugin.class);
-        registerPlugin(NativeTerminalPlugin.class);
         super.onCreate(savedInstanceState);
         enableImmersiveMode();
     }

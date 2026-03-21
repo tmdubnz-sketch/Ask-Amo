@@ -117,7 +117,31 @@ async function startServer() {
   }
 
   httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    const os = require('os');
+    const networkInterfaces = os.networkInterfaces() as Record<string, any[] | undefined>;
+    const localIps: string[] = [];
+    
+    for (const [name, addrs] of Object.entries(networkInterfaces)) {
+      if (Array.isArray(addrs)) {
+        for (const addr of addrs) {
+          // Get IPv4 addresses that aren't loopback
+          if (addr.family === 'IPv4' && !addr.internal) {
+            localIps.push(addr.address);
+          }
+        }
+      }
+    }
+    
+    console.log(`\n╔════════════════════════════════════════════╗`);
+    console.log(`║ Ask-Amo Server Running                      ║`);
+    console.log(`╠════════════════════════════════════════════╣`);
+    console.log(`║ Local:        http://localhost:${PORT}${' '.repeat(Math.max(0, 16 - String(PORT).length))} ║`);
+    if (localIps.length > 0) {
+      for (const ip of localIps) {
+        console.log(`║ Network:      http://${ip}:${PORT}${' '.repeat(Math.max(0, 12 - ip.length))}║`);
+      }
+    }
+    console.log(`╚════════════════════════════════════════════╝\n`);
   });
 
   process.on('SIGTERM', () => {

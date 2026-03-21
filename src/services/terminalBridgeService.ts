@@ -87,27 +87,14 @@ export const terminalBridgeService = {
     const session = getSession(chatId);
 
     try {
-      const response = await fetch('/api/terminal/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command,
-          sessionId: session.sessionId,
-          cwd: session.cwd || undefined,
-          timeoutMs,
-        }),
+      const { terminalService } = await import('./terminalService');
+      const data = await terminalService.exec({
+        command,
+        sessionId: session.sessionId,
+        cwd: session.cwd || undefined,
+        timeoutMs,
       });
 
-      if (!response.ok) {
-        throw createError(
-          'TerminalBridge',
-          ERROR_CODES.TERMINAL_COMMAND_FAILED,
-          `Terminal API error: ${response.status}`,
-          'Failed to execute command due to server error'
-        );
-      }
-
-      const data = await response.json();
 
       const result: TerminalResult = {
         command: data.command,

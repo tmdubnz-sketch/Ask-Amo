@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { useModelSettingsStore } from '../stores/modelSettingsStore';
 import {
   MessageSquare,
@@ -24,10 +25,12 @@ import {
   EyeOff,
   Loader2,
   ExternalLink,
+  Volume2,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { AMO_COMMANDS, AMO_PROMPT_TEMPLATES } from '../data/amoHelpData';
 import { ModelDownloadManager, type DownloadableModel } from './ModelDownloadManager';
+import { voicePersonaService, VOICE_PERSONAS, type VoicePersonaType } from '../services/voicePersonaService';
 import type { ChatSession } from '../types';
 import type {
   ConversationMemoryRow,
@@ -76,6 +79,7 @@ interface SidebarProps {
   onSaveCurrentPage: () => void;
   onExportBrain: () => void;
   onImportBrain: (file: File) => void;
+  onRestoreDefaultBrain: () => void;
   selectedModelId: string;
   availableModels: Array<{ id: string; name: string; description: string; family: string; isCloud?: boolean }>;
   onSelectModel: (modelId: string) => void;
@@ -349,12 +353,25 @@ function ToolsPanel(props: SidebarProps) {
         
         <SectionLabel>Development</SectionLabel>
         <QuickGrid>
-          <QuickBtn label="Run build" description="npm run build" loading={loadingAction === 'npm run build'} onClick={() => handleQuickAction('npm run build')} />
-          <QuickBtn label="Git status" description="Check changes" loading={loadingAction === 'git status'} onClick={() => handleQuickAction('git status')} />
-          <QuickBtn label="Install deps" description="npm install" loading={loadingAction === 'npm install'} onClick={() => handleQuickAction('npm install')} />
-          <QuickBtn label="Run lint" description="npm run lint" loading={loadingAction === 'npm run lint'} onClick={() => handleQuickAction('npm run lint')} />
-          <QuickBtn label="Git log" description="Recent commits" loading={loadingAction === 'git log --oneline -10'} onClick={() => handleQuickAction('git log --oneline -10')} />
-          <QuickBtn label="List files" description="Show workspace" loading={loadingAction === 'ls -la amo-workspace/'} onClick={() => handleQuickAction('ls -la amo-workspace/')} />
+          {Capacitor.isNativePlatform() ? (
+            <>
+              <QuickBtn label="List files" description="Show workspace" loading={loadingAction === 'ls -la'} onClick={() => handleQuickAction('ls -la')} />
+              <QuickBtn label="Show path" description="Current directory" loading={loadingAction === 'pwd'} onClick={() => handleQuickAction('pwd')} />
+              <QuickBtn label="Disk space" description="Storage info" loading={loadingAction === 'df -h'} onClick={() => handleQuickAction('df -h')} />
+              <QuickBtn label="Memory" description="RAM usage" loading={loadingAction === 'free -h'} onClick={() => handleQuickAction('free -h')} />
+              <QuickBtn label="Processes" description="Running tasks" loading={loadingAction === 'ps aux | head -20'} onClick={() => handleQuickAction('ps aux | head -20')} />
+              <QuickBtn label="Network" description="Check connectivity" loading={loadingAction === 'ping -c 1 google.com'} onClick={() => handleQuickAction('ping -c 1 google.com')} />
+            </>
+          ) : (
+            <>
+              <QuickBtn label="Run build" description="npm run build" loading={loadingAction === 'npm run build'} onClick={() => handleQuickAction('npm run build')} />
+              <QuickBtn label="Git status" description="Check changes" loading={loadingAction === 'git status'} onClick={() => handleQuickAction('git status')} />
+              <QuickBtn label="Install deps" description="npm install" loading={loadingAction === 'npm install'} onClick={() => handleQuickAction('npm install')} />
+              <QuickBtn label="Run lint" description="npm run lint" loading={loadingAction === 'npm run lint'} onClick={() => handleQuickAction('npm run lint')} />
+              <QuickBtn label="Git log" description="Recent commits" loading={loadingAction === 'git log --oneline -10'} onClick={() => handleQuickAction('git log --oneline -10')} />
+              <QuickBtn label="List files" description="Show workspace" loading={loadingAction === 'ls -la amo-workspace/'} onClick={() => handleQuickAction('ls -la amo-workspace/')} />
+            </>
+          )}
         </QuickGrid>
         
         <SectionLabel>Knowledge & Web</SectionLabel>
@@ -517,6 +534,7 @@ function HelpPanel(props: SidebarProps) {
 function SettingsPanel(props: SidebarProps) {
   const { temperature, topP, maxTokens, setTemperature, setTopP, setMaxTokens } = useModelSettingsStore();
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [activePersona, setActivePersona] = useState(() => voicePersonaService.getActivePersona());
   
   const handleImportClick = () => {
     const input = document.createElement('input');
@@ -532,6 +550,11 @@ function SettingsPanel(props: SidebarProps) {
     input.click();
   };
   
+  const handlePersonaChange = (personaId: string) => {
+    voicePersonaService.setActivePersona(personaId as VoicePersonaType);
+    setActivePersona(voicePersonaService.getActivePersona());
+  };
+  
   return (
     <>
       <PanelHeader title="Settings" subtitle="App preferences and configuration" />
@@ -542,6 +565,45 @@ function SettingsPanel(props: SidebarProps) {
           <ToggleRow label="Continuous voice" description="Keep mic open after requests" value={props.voiceContinuous} onToggle={props.onToggleVoiceContinuous} icon={Mic} />
           <ToggleRow label="Web search" description="Search before answering" value={props.isWebSearchEnabled} onToggle={props.onToggleWebSearch} icon={Search} />
           <ToggleRow label="Deep think" description="More careful reasoning" value={props.isDeepThinkEnabled} onToggle={props.onToggleDeepThink} icon={Brain} />
+        </div>
+        
+        <SectionLabel>Voice Personality</SectionLabel>
+        <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-3 space-y-2">
+          <div className="text-[10px] text-white/60 mb-2">
+            <div className="flex items-center gap-2 mb-2">
+              <Volume2 className="w-3.5 h-3.5 text-[#ff4e00]" />
+              <span className="font-semibold">Select Amo's personality mode</span>
+            </div>
+            <p className="text-white/40">Changes voice characteristics, speech patterns, and response style</p>
+          </div>
+          <div className="space-y-2">
+            {Object.entries(VOICE_PERSONAS).map(([id, persona]) => (
+              <button
+                key={id}
+                onClick={() => handlePersonaChange(id)}
+                className={cn(
+                  'w-full p-2.5 rounded-lg border text-left transition-all',
+                  activePersona.id === id
+                    ? 'bg-[#ff4e00]/20 border-[#ff4e00]/40'
+                    : 'bg-white/[0.02] border-white/10 hover:border-white/20'
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className={cn('text-[11px] font-semibold', activePersona.id === id ? 'text-[#ff4e00]' : 'text-white/80')}>
+                      {persona.displayName}
+                    </div>
+                    <div className="text-[9px] text-white/40 mt-0.5 leading-tight">
+                      {persona.description}
+                    </div>
+                  </div>
+                  {activePersona.id === id && (
+                    <div className="text-[9px] font-bold text-[#ff4e00] mt-0.5 shrink-0">ACTIVE</div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
         
         <SectionLabel>Model Inference</SectionLabel>
@@ -598,12 +660,17 @@ function SettingsPanel(props: SidebarProps) {
         
         <SectionLabel>Brain Data</SectionLabel>
         <div className="space-y-0.5">
-          <ActionItem icon={Download} label="Export brain" description="Download complete brain backup" onClick={props.onExportBrain} />
-          <ActionItem icon={HardDrive} label="Import brain" description="Restore from backup file" onClick={handleImportClick} />
-          <ActionItem icon={Trash2} label="Clear all memory" description="Wipe brain notes and summaries" onClick={props.onClearMemory} danger />
-          <ActionItem icon={Download} label="Export chat history" description="Save all conversations to file" onClick={props.onExportHistory} />
-          <ActionItem icon={RefreshCw} label="Refresh news" description="Fetch latest NZ and world news" onClick={props.onRefreshNews} />
-          <ActionItem icon={ExternalLink} label="Open in Chrome" description="Use Chrome instead of WebView for better WebGPU" onClick={props.onOpenInChrome} />
+          <ActionItem icon={RefreshCw} label="Reset brain" description="Restore Amo's knowledge" onClick={props.onRestoreDefaultBrain} />
+          <ActionItem icon={Download} label="Export brain" description="Download backup" onClick={props.onExportBrain} />
+          <ActionItem icon={HardDrive} label="Import brain" description="Restore from file" onClick={handleImportClick} />
+          <ActionItem icon={Trash2} label="Clear memory" description="Wipe brain data" onClick={props.onClearMemory} danger />
+        </div>
+        
+        <SectionLabel>Tools</SectionLabel>
+        <div className="space-y-0.5">
+          <ActionItem icon={Download} label="Export chat" description="Save conversations" onClick={props.onExportHistory} />
+          <ActionItem icon={RefreshCw} label="Refresh news" description="Get latest news" onClick={props.onRefreshNews} />
+          <ActionItem icon={ExternalLink} label="Open in Chrome" description="Use Chrome browser" onClick={props.onOpenInChrome} />
         </div>
         
         <SectionLabel>About</SectionLabel>

@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { AMO_STARTER_PACKS } from '../data/amoStarterPacks';
 import { CURATED_KNOWLEDGE_PACKS } from '../data/curatedKnowledge';
 import { AMO_SELF_KNOWLEDGE } from '../data/amoSelfKnowledge';
@@ -94,9 +95,36 @@ async function bootstrapHelpKnowledge(): Promise<void> {
 export const knowledgeBootstrapService = {
   async bootstrapAmoBrain(): Promise<void> {
     console.info('[Bootstrap] Starting brain population...');
+    console.info('[Bootstrap] Platform:', Capacitor.getPlatform());
+    console.info('[Bootstrap] Is native:', Capacitor.isNativePlatform());
 
-    await knowledgeStoreService.init();
-    console.info('[Bootstrap] Knowledge store initialized');
+    try {
+      await knowledgeStoreService.init();
+      console.info('[Bootstrap] Knowledge store initialized successfully');
+      
+      // Check if we're using volatile storage (WASM) on Android
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+        const stats = await knowledgeStoreService.getBrainStats();
+        
+        console.info('[Bootstrap] Current data counts - Documents:', stats.documents, 'Chunks:', stats.chunks, 'Memory notes:', stats.memoryNotes, 'Summaries:', stats.summaries, 'Tools:', stats.tools);
+        
+        // If we have no data on Android, the persistent storage might not be working
+        if (stats.documents === 0 && stats.chunks === 0 && stats.memoryNotes === 0 && stats.summaries === 0 && stats.tools === 0) {
+          console.warn('[Bootstrap] No data found on Android - attempting to reset database');
+          try {
+            // Force re-initialization by clearing and recreating
+            console.info('[Bootstrap] Forcing database reinitialization...');
+            await knowledgeStoreService.init();
+            console.info('[Bootstrap] Database reinitialized');
+          } catch (clearError) {
+            console.error('[Bootstrap] Failed to reinitialize database:', clearError);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Bootstrap] Failed to initialize knowledge store:', e);
+      throw e;
+    }
     
     // Check if data already exists
     const existingDocs = await knowledgeStoreService.listDocuments();

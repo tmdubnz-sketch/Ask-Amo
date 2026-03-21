@@ -19,11 +19,10 @@ function routeToTools(slots: ExtractedSlots): ToolUsed[] {
   const tools: ToolUsed[] = [];
   const { action, target } = slots;
 
-  // Terminal routing
+  // Terminal routing — ONLY when there's an actual command to run
+  // Code creation tasks should NOT route to terminal (let IDE loop handle them)
   if (
     action === 'execute' ||
-    (action === 'create' && target === 'editor') ||
-    (action === 'read' && target === 'editor') ||
     target === 'terminal'
   ) {
     tools.push('terminal');
@@ -48,12 +47,14 @@ function routeToTools(slots: ExtractedSlots): ToolUsed[] {
     tools.push('websearch');
   }
 
-  // Workspace routing
+  // Workspace routing — for file creation tasks
   if (
     action === 'store' ||
     (action === 'create' && !target) ||
+    (action === 'create' && target === 'editor') ||
     target === 'knowledge' ||
-    (action === 'read' && target === 'knowledge')
+    (action === 'read' && target === 'knowledge') ||
+    (action === 'read' && target === 'editor')
   ) {
     tools.push('workspace');
   }
@@ -130,10 +131,12 @@ export const amoToolCoordinator = {
     }
 
     if (tools.includes('terminal') || slots.target === 'terminal') {
-      result.viewSwitch = 'terminal';
-
+      // Only switch to terminal if we're actually running a command
+      // For code creation tasks, let the IDE loop handle view switching
       const command = extractCommand(userPrompt, slots);
+      
       if (command) {
+        result.viewSwitch = 'terminal';
         const termResult = await terminalBridgeService.run(command, chatId);
         result.toolsUsed.push('terminal');
 
@@ -152,8 +155,10 @@ export const amoToolCoordinator = {
           result.instantReply = `Here is what I got:\n\n${termResult.output.trim()}`;
         }
       } else {
+        // No command extracted — this is likely a code creation task
+        // Don't switch to terminal, let IDE loop handle it
         contextParts.push(
-          `[Terminal opened]\nCurrent directory: ${terminalBridgeService.getCwd(chatId) || 'unknown'}`
+          `[Workspace ready]\nCurrent directory: ${terminalBridgeService.getCwd(chatId) || 'unknown'}`
         );
       }
     }

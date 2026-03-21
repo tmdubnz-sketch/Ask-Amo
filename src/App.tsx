@@ -55,30 +55,28 @@ import { motion, AnimatePresence } from 'motion/react';
 import { groqService } from './services/groqService';
 import { openrouterService } from './services/openrouterService';
 import { openaiService } from './services/openaiService';
-import { mistralService } from './services/mistralService';
 import { geminiService } from './services/geminiService';
+import { mistralService } from './services/mistralService';
+import { assistantRuntimeService } from './services/assistantRuntimeService';
 import { documentService } from './services/documentService';
-import { useModelSettingsStore } from './stores/modelSettingsStore';
+import { knowledgeStoreService, knowledgeBootstrapService, nativeOfflineLlmService, audioCaptureService, speechT5Service, webBrowserService, voiceWebAssistService } from './services/index';
+import { workspaceService } from './services/workspaceService';
 import { injectFileContext } from './services/fileContextService';
 import { vectorDbService } from './services/vectorDbService';
 import { webSearchService, shouldUseWebSearch } from './services/webSearchService';
-import { assistantRuntimeService } from './services/assistantRuntimeService';
-import { knowledgeBootstrapService } from './services/knowledgeBootstrapService';
-import { knowledgeStoreService } from './services/knowledgeStoreService';
+import { apiKeyStorage } from './services/apiKeyStorage';
 import { normalizeTranscriptText, routeUserIntent } from './services/intentRouterService';
 import { nativeChatSessionService } from './services/nativeChatSessionService';
-import { nativeReplyCoordinator, buildDeterministicReply } from './services/nativeReplyCoordinator';
+import { nativeAssistantOrchestrator } from './services/nativeAssistantOrchestrator';
+import { buildDeterministicReply } from './services/nativeReplyCoordinator';
 import {
-  nativeOfflineLlmService,
   type NativeOfflineDownloadAuthStatus,
   type NativeOfflineModelInfo,
   type NativeOfflineStatus,
 } from './services/nativeOfflineLlmService';
-import { nativePiperVoiceService, type NativePiperVoiceStatus } from './services/nativePiperVoiceService';
 import { nativeTtsService, type NativeTtsStatus, type NativeTtsVoiceInfo } from './services/nativeTtsService';
-import { speechT5Service } from './services/speechT5Service';
 import { useMessages } from './hooks/useMessages';
-import { audioCaptureService } from './services/audioCaptureService';
+import { useModelSettingsStore } from './stores/modelSettingsStore';
 import { MessageList } from './components/MessageList';
 import { AmoAvatar } from './components/AmoAvatar';
 import { Sidebar, type SidebarTab } from './components/Sidebar';
@@ -88,11 +86,12 @@ import { isIdeIntent } from './services/amoIdePrompt';
 import { runIdeLoop, matchTaskTemplate } from './services/amoIdeLoop';
 import { extractSlots, slotsToKnowledgeQuery, slotsToPromptHint } from './services/slotExtractorService';
 import { AVAILABLE_MODELS, type ModelConfig, type ChatSession } from './types';
-import { apiKeyStorage } from './services/apiKeyStorage';
 import { amoBrainService } from './services/amoBrainService';
 import { brainLearningService } from './services/brainLearningService';
 import type { ConversationMemoryRow, MemorySummaryRow, SeedPackRow, ToolRegistryRow } from './services/knowledgeStoreService';
+import type { Workspace } from './services/workspaceService';
 import { cn } from './lib/utils';
+import { voicePersonaService } from './services/voicePersonaService';
 
 type SettingsSection = 'general' | 'models' | 'knowledge' | 'workspace' | 'cognition';
 type ImportSourceKind = 'document' | 'skill' | 'dataset';
@@ -231,62 +230,6 @@ function normalizeWebUrl(value: string): string {
   return `https://${trimmed}`;
 }
 
-type AutoActionResult = {
-  view: AmoView;
-  reply: string;
-  webUrl?: string;
-};
-
-function detectAutoAction(userInput: string): AutoActionResult | null {
-  const normalized = userInput.trim().toLowerCase();
-  if (!normalized) return null;
-
-  const urlMatch = userInput.match(/https?:\/\/\S+|www\.\S+/i);
-  if (urlMatch) {
-    return {
-      view: 'webview',
-      webUrl: normalizeWebUrl(urlMatch[0]),
-      reply: `Opening ${normalizeWebUrl(urlMatch[0])} in Android WebView.`,
-    };
-  }
-
-  if (/(open|use|show|switch to).*(terminal)|\bterminal\b.*(open|use|show)/i.test(normalized)) {
-    return {
-      view: 'terminal',
-      reply: 'Opening Terminal now. I can run task commands there.',
-    };
-  }
-
-  if (/(open|use|show|switch to).*(webview|browser|web)|\b(webview|browser)\b.*(open|use|show)/i.test(normalized)) {
-    return {
-      view: 'webview',
-      webUrl: 'amo://dashboard',
-      reply: 'Opening Android WebView now.',
-    };
-  }
-
-  const searchMatch = normalized.match(/^(search|look up|find|browse)\b(.+)$/i);
-  if (searchMatch) {
-    const query = searchMatch[2].trim().replace(/^[\s:,-]+/, '');
-    if (query) {
-      return {
-        view: 'webview',
-        webUrl: `amo://search?q=${encodeURIComponent(query)}`,
-        reply: `Opening WebView search for ${query}.`,
-      };
-    }
-  }
-
-  if (/(run|execute|build|debug|scan|edit|fix|install|code|check)\b/i.test(normalized)) {
-    return {
-      view: 'terminal',
-      reply: 'This sounds like a task job. Opening Terminal so I can work through it step by step.',
-    };
-  }
-
-  return null;
-}
-
 interface ImportedAssetMetadata {
   assetKind?: ImportedAssetKind;
   source?: 'user' | 'starter-pack';
@@ -358,10 +301,6 @@ function buildConversationSummary(userContent: string, assistantContent: string)
   return `User asked: ${compactUser} Amo replied: ${compactAssistant}`;
 }
 
-const PREFERRED_NATIVE_VOICE_NAMES = [
-  'en-us-x-iom-local', 'en-us-x-iob-local', 'en-us-x-tpd-local', 'en-us-x-sfg-local', 'en-us-x-iog-local', 'en-us-x-tpc-local', 'en-au-x-aub-local',
-];
-
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   let timeoutId: number | undefined;
   const timeoutPromise = new Promise<T>((_, reject) => {
@@ -377,18 +316,31 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
 }
 
 function scoreVoice(voice: SpeechSynthesisVoice): number {
+  // Dynamic voice scoring based on active persona
+  const persona = voicePersonaService.getActivePersona();
+  const preferredNames = persona.voicePreferenceNames || [];
+  
   const name = voice.name.toLowerCase();
   const lang = voice.lang.toLowerCase();
   let score = 0;
-  if (lang.includes('en-nz')) score += 56;
+  
+  // Locale scoring based on persona preference
+  if (lang.includes(persona.localePreference)) score += 56;
   else if (lang.includes('en-au')) score += 46;
   else if (lang.includes('en-us')) score += 20;
   else if (lang.includes('en-gb')) score -= 48;
+  
   if (name.includes('google')) score += 12;
   if (voice.default) score += 8;
-  if (name.includes('daniel')) score += 36;
-  if (name.includes('lee')) score += 28;
-  if (name.includes('gordon')) score += 24;
+  
+  // Check preferred voice names from persona
+  for (const preferred of preferredNames) {
+    if (name.includes(preferred)) {
+      score += 36;
+      break;
+    }
+  }
+  
   if (name.includes('male') || name.includes('man') || name.includes('guy')) score += 20;
   if (name.includes('natural') || name.includes('neural') || name.includes('studio')) score += 18;
   if (name.includes('deep') || name.includes('bass')) score += 8;
@@ -396,6 +348,7 @@ function scoreVoice(voice: SpeechSynthesisVoice): number {
   if (name.includes('gbd') || name.includes('male_1') || name.includes('male_2')) score += 24;
   if (name.includes('female') || name.includes('woman') || name.includes('girl')) score -= 42;
   if (name.includes('child')) score -= 24;
+  
   return score;
 }
 
@@ -410,15 +363,27 @@ function isPreferredNativeTtsLocale(locale: string): boolean {
 }
 
 function scoreNativeTtsVoice(voice: NativeTtsVoiceInfo): number {
+  const persona = voicePersonaService.getActivePersona();
+  const preferredNames = persona.voicePreferenceNames || [];
+  
   const name = voice.name.toLowerCase();
   const locale = voice.locale.toLowerCase();
   let score = 0;
-  const preferredIndex = PREFERRED_NATIVE_VOICE_NAMES.indexOf(name);
-  if (preferredIndex >= 0) score += 220 - preferredIndex * 18;
-  if (locale.startsWith('en-nz')) score += 80;
+  
+  // Check preferred voice names from persona
+  for (let i = 0; i < preferredNames.length; i++) {
+    if (name.includes(preferredNames[i])) {
+      score += 220 - i * 18;
+      break;
+    }
+  }
+  
+  // Locale scoring based on persona preference
+  if (locale.startsWith(persona.localePreference)) score += 80;
   else if (locale.startsWith('en-us')) score += 46;
   else if (locale.startsWith('en-au')) score += 24;
   else score -= 120;
+  
   if (name.includes('male') || name.includes('man') || name.includes('guy')) score += 30;
   if (name.includes('daniel')) score += 34;
   if (name.includes('lee')) score += 24;
@@ -548,7 +513,6 @@ export default function App({ ready = true }: AppProps) {
   
   const [nativeOfflineStatus, setNativeOfflineStatus] = useState<NativeOfflineStatus | null>(null);
   const [nativeTtsStatus, setNativeTtsStatus] = useState<NativeTtsStatus | null>(null);
-  const [nativePiperStatus, setNativePiperStatus] = useState<NativePiperVoiceStatus | null>(null);
   const [loadedModelId, setLoadedModelId] = useState<string | null>(null);
   const [downloadStatus, setDownloadStatus] = useState('');
    const [error, setError] = useState<string | null>(null);
@@ -560,7 +524,9 @@ export default function App({ ready = true }: AppProps) {
    const [webViewUrl, setWebViewUrl] = useState('amo://dashboard');
    const [isWebAssistActive, setIsWebAssistActive] = useState(false);
    const [toasts, setToasts] = useState<Toast[]>([]);
-  
+   const [pendingEditorCode, setPendingEditorCode] = useState<{ code: string; filename: string; autoRun?: boolean } | null>(null);
+   const [amoTerminalOutput, setAmoTerminalOutput] = useState<string>('');
+   
   const [brainMemoryRows, setBrainMemoryRows] = useState<ConversationMemoryRow[]>([]);
   const [brainSummaryRows, setBrainSummaryRows] = useState<MemorySummaryRow[]>([]);
   const [toolRegistryRows, setToolRegistryRows] = useState<ToolRegistryRow[]>([]);
@@ -584,7 +550,11 @@ export default function App({ ready = true }: AppProps) {
 
   useEffect(() => {
     let cancelled = false;
-    apiKeyStorage.init().then(() => {
+    // Hydrate API keys with timeout — don't block app init if secret store hangs
+    Promise.race([
+      apiKeyStorage.init(),
+      new Promise(resolve => setTimeout(resolve, 5000)), // 5 second timeout
+    ]).then(() => {
       if (cancelled) return;
       const keys = apiKeyStorage.getAll();
       setGroqApiKey(keys.groq);
@@ -593,6 +563,9 @@ export default function App({ ready = true }: AppProps) {
       setGeminiApiKey(keys.gemini);
       setMistralApiKey(keys.mistral);
       setAreApiKeysHydrated(true);
+    }).catch(() => {
+      // Secret store failed — continue without API keys
+      if (!cancelled) setAreApiKeysHydrated(true);
     });
     return () => { cancelled = true; };
   }, []);
@@ -605,16 +578,136 @@ export default function App({ ready = true }: AppProps) {
 
   useEffect(() => {
     if (!ready) return;
+    
+    console.log('[AskAmo] Starting initialization process...');
+    setDownloadStatus('Initializing app...');
+    
     void (async () => {
+      const startTime = Date.now();
+      const MIN_INIT_TIME = 3000; // 3 seconds minimum to show loading screen
+      let errorCount = 0;
+      
       try {
-        await knowledgeStoreService.init();
-        await knowledgeBootstrapService.bootstrapAmoBrain();
-        await syncUploadedDocsFromStorage();
-        await refreshBrainState();
-        console.info('[AskAmo] Brain bootstrap complete.');
+        console.log('[AskAmo] Step 1: Initializing knowledge store...');
+        setDownloadStatus('Initializing knowledge store...');
+        try {
+          await knowledgeStoreService.init();
+          console.log('[AskAmo] ✓ Knowledge store initialized');
+        } catch (stepError) {
+          errorCount++;
+          console.error('[AskAmo] ✗ Knowledge store init failed:', stepError);
+          setDownloadStatus(`Error ${errorCount}: Knowledge store failed`);
+          throw new Error(`Knowledge store initialization failed: ${stepError instanceof Error ? stepError.message : 'Unknown error'}`);
+        }
+        
+        console.log('[AskAmo] Step 2: Initializing workspace service...');
+        setDownloadStatus('Initializing workspace...');
+        try {
+          await workspaceService.init();
+          setCurrentWorkspace(workspaceService.getCurrentWorkspace());
+          console.log('[AskAmo] ✓ Workspace service initialized');
+        } catch (stepError) {
+          errorCount++;
+          console.error('[AskAmo] ✗ Workspace service init failed:', stepError);
+          setDownloadStatus(`Error ${errorCount}: Workspace service failed`);
+          throw new Error(`Workspace service initialization failed: ${stepError instanceof Error ? stepError.message : 'Unknown error'}`);
+        }
+        
+        console.log('[AskAmo] Step 3: Bootstrapping brain...');
+        setDownloadStatus('Bootstrapping brain knowledge...');
+        try {
+          await knowledgeBootstrapService.bootstrapAmoBrain();
+          console.log('[AskAmo] ✓ Brain bootstrap completed');
+        } catch (stepError) {
+          errorCount++;
+          console.error('[AskAmo] ✗ Brain bootstrap failed:', stepError);
+          setDownloadStatus(`Error ${errorCount}: Brain bootstrap failed`);
+          throw new Error(`Brain bootstrap failed: ${stepError instanceof Error ? stepError.message : 'Unknown error'}`);
+        }
+        
+        console.log('[AskAmo] Step 4: Syncing uploaded documents...');
+        setDownloadStatus('Syncing documents...');
+        try {
+          await syncUploadedDocsFromStorage();
+          console.log('[AskAmo] ✓ Documents synced');
+        } catch (stepError) {
+          errorCount++;
+          console.error('[AskAmo] ✗ Document sync failed:', stepError);
+          console.warn('[AskAmo] Continuing without document sync...');
+          setDownloadStatus(`Warning ${errorCount}: Document sync failed, continuing...`);
+        }
+        
+        console.log('[AskAmo] Step 5: Refreshing brain state...');
+        setDownloadStatus('Refreshing brain state...');
+        try {
+          await refreshBrainState();
+          console.log('[AskAmo] ✓ Brain state refreshed');
+        } catch (stepError) {
+          errorCount++;
+          console.error('[AskAmo] ✗ Brain state refresh failed:', stepError);
+          setDownloadStatus(`Error ${errorCount}: Brain state refresh failed`);
+          throw new Error(`Brain state refresh failed: ${stepError instanceof Error ? stepError.message : 'Unknown error'}`);
+        }
+        
+         console.log('[AskAmo] Step 6: Initializing native TTS...');
+         setDownloadStatus('Initializing voice synthesis...');
+         try {
+           await refreshNativeTtsStatus();
+           console.log('[AskAmo] ✓ Native TTS initialized');
+         } catch (stepError) {
+           errorCount++;
+           console.error('[AskAmo] ✗ Native TTS init failed:', stepError);
+           console.warn('[AskAmo] Continuing without native TTS...');
+           setDownloadStatus(`Warning ${errorCount}: Native voice synthesis unavailable, continuing...`);
+         }
+         
+         // Initialize web-based SpeechT5 for browsers
+         console.log('[AskAmo] Step 6b: Initializing web SpeechT5...');
+         try {
+           await speechT5Service.init();
+           console.log('[AskAmo] ✓ Web SpeechT5 initialized');
+         } catch (stepError) {
+           console.warn('[AskAmo] Web SpeechT5 not available, TTS will be unavailable on browser:', stepError);
+         }
+        
+        // Check if brain is still empty and force reinitialize
+        const stats = await knowledgeStoreService.getBrainStats();
+        console.info('[AskAmo] Brain stats after bootstrap:', stats);
+        
+        if (stats.documents === 0 && stats.chunks === 0 && stats.memoryNotes === 0) {
+          console.warn('[AskAmo] Brain is still empty after bootstrap - forcing reinitialization');
+          setDownloadStatus('Brain empty, reinitializing...');
+          try {
+            // Force clear and reinitialize
+            await knowledgeBootstrapService.bootstrapAmoBrain();
+            await refreshBrainState();
+            console.info('[AskAmo] ✓ Brain rebootstrap complete');
+            setDownloadStatus('Brain reinitialized successfully!');
+          } catch (reinitError) {
+            console.error('[AskAmo] Brain rebootstrap failed:', reinitError);
+            setError('Brain initialization failed. Please restart the app.');
+            setDownloadStatus('Brain initialization failed!');
+          }
+        } else {
+          setDownloadStatus('Ready! Brain loaded with knowledge.');
+        }
+        
+        console.log('[AskAmo] ✓ Initialization complete!');
       } catch (e) {
-        console.error('[AskAmo] Brain bootstrap failed:', e);
+        console.error('[AskAmo] Initialization failed:', e);
+        setError(`Initialization failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+        setDownloadStatus('Initialization failed!');
       } finally {
+        // Ensure minimum initialization time for better UX
+        const elapsed = Date.now() - startTime;
+        const remainingTime = Math.max(0, MIN_INIT_TIME - elapsed);
+        
+        if (remainingTime > 0) {
+          console.log(`[AskAmo] Waiting ${remainingTime}ms to complete minimum init time...`);
+          await new Promise(resolve => setTimeout(resolve, remainingTime));
+        }
+        
+        console.log('[AskAmo] Setting initializing to false...');
         setIsInitializing(false);
       }
     })();
@@ -684,12 +777,30 @@ export default function App({ ready = true }: AppProps) {
     }
   };
 
-  const refreshNativeDownloadAuthStatus = async () => {
-    if (!nativeOfflineLlmService.isAvailable()) return;
-    setNativeDownloadAuthStatus(await nativeOfflineLlmService.getDownloadAuthStatus());
-  };
+   const refreshNativeDownloadAuthStatus = async () => {
+     if (!nativeOfflineLlmService.isAvailable()) return;
+     setNativeDownloadAuthStatus(await nativeOfflineLlmService.getDownloadAuthStatus());
+   };
 
-   const ensureNativeOfflineReady = async (): Promise<NativeOfflineStatus> => {
+   const refreshNativeTtsStatus = async () => {
+     try {
+       if (nativeTtsService.isAvailable()) {
+         const status = await nativeTtsService.getStatus();
+         console.log('[App] Native TTS status refreshed:', JSON.stringify({
+           ready: status?.ready,
+           language: status?.language,
+           voiceName: status?.voiceName,
+           availableVoices: status?.availableVoices?.length || 0,
+           message: status?.message,
+         }));
+         setNativeTtsStatus(status);
+       }
+     } catch (e) {
+       console.error('[App] refreshNativeTtsStatus failed:', e);
+     }
+   };
+
+    const ensureNativeOfflineReady = async (): Promise<NativeOfflineStatus> => {
      // Prepare the runtime if needed
      const prepareStatus = await nativeOfflineLlmService.prepareRuntime();
      if (prepareStatus) setDownloadStatus(prepareStatus.message);
@@ -858,12 +969,53 @@ export default function App({ ready = true }: AppProps) {
     }
   };
 
+  const handleResetBrain = async () => {
+    try {
+      setDownloadStatus('Resetting brain...');
+      console.log('[ResetBrain] Starting brain reset...');
+      
+      // Force rebootstrap
+      await knowledgeBootstrapService.bootstrapAmoBrain();
+      await refreshBrainState();
+      
+      setDownloadStatus('Brain reset complete!');
+      console.log('[ResetBrain] Brain reset completed');
+    } catch (e: any) {
+      console.error('[ResetBrain] Brain reset failed:', e);
+      setError(`Brain reset failed: ${e.message}`);
+      setDownloadStatus('Brain reset failed.');
+    }
+  };
+
   const handleOpenInChrome = async () => {
     try {
-      const currentUrl = window.location.href;
-      await Browser.open({ url: currentUrl, windowName: '_blank' });
-    } catch (e: any) {
-      setError('Failed to open in Chrome.');
+      // Build the URL based on current platform
+      let url: string;
+      
+      if (Capacitor.getPlatform() === 'android') {
+        // On Android, try to get the actual device hostname from window.location if available
+        // If running on Capacitor, the app is served locally
+        // Attempt to open current location or localhost:8080 as fallback
+        const currentHost = window.location.hostname;
+        const currentPort = window.location.port || '8080';
+        
+        // If we have a valid host, use it
+        if (currentHost && currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+          url = `http://${currentHost}:${currentPort}${window.location.pathname}`;
+        } else {
+          // Fallback to localhost:8080 for Capacitor's web asset serving
+          url = 'http://localhost:8080';
+        }
+      } else {
+        // On web, use the current URL
+        url = window.location.href;
+      }
+      
+      console.log('[App] Opening in Chrome:', url);
+      await Browser.open({ url, windowName: '_blank' });
+    } catch (error) {
+      console.error('Failed to open in Chrome:', error);
+      setError('Failed to open in Chrome browser.');
     }
   };
 
@@ -893,16 +1045,26 @@ export default function App({ ready = true }: AppProps) {
     try {
       setDownloadStatus('Exporting brain data...');
       const backup = await knowledgeStoreService.exportBrain();
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `amo-brain-backup-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setDownloadStatus('Brain exported successfully!');
+      const filename = `amo-brain-backup-${new Date().toISOString().split('T')[0]}.json`;
+      const content = JSON.stringify(backup, null, 2);
+      
+      if (Capacitor.isNativePlatform() && currentWorkspace) {
+        // Save to workspace directory
+        const fullPath = await workspaceService.saveToWorkspace(filename, content);
+        setDownloadStatus(`Brain exported to: ${fullPath}`);
+      } else {
+        // Browser fallback - download
+        const blob = new Blob([content], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setDownloadStatus('Brain exported successfully!');
+      }
     } catch (error) {
       console.error('Failed to export brain:', error);
       setDownloadStatus('Failed to export brain data.');
@@ -926,6 +1088,86 @@ export default function App({ ready = true }: AppProps) {
     } catch (error) {
       console.error('Failed to import brain:', error);
       setDownloadStatus('Failed to import brain data.');
+    }
+  };
+
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isSavingBeforeReset, setIsSavingBeforeReset] = useState(false);
+  const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+
+  const handleRestoreDefaultBrain = async () => {
+    setShowResetConfirm(true);
+  };
+
+  const handleConfirmReset = async (saveFirst: boolean) => {
+    setShowResetConfirm(false);
+    
+    try {
+      if (saveFirst) {
+        setIsSavingBeforeReset(true);
+        setDownloadStatus('Saving brain before reset...');
+        await handleExportBrain();
+        setIsSavingBeforeReset(false);
+      }
+      
+      setDownloadStatus('Resetting brain...');
+      console.log('[ResetBrain] Starting...');
+      
+      const appScope = 'app:ask-amo';
+      
+      // Clear all brain data first
+      console.log('[ResetBrain] Clearing existing data...');
+      await amoBrainService.clearMemoryNotes(appScope);
+      await amoBrainService.clearSummaries(appScope);
+      
+      // Load and use the default backup
+      const { getDefaultBrainBackup } = await import('./data/brain-backups');
+      const defaultBackup = getDefaultBrainBackup();
+      
+      console.log('[ResetBrain] Adding memory entries...');
+      // Add all memory from backup using remember method
+      for (const memory of defaultBackup.data.conversationMemory) {
+        await amoBrainService.remember(
+          appScope,
+          'Memory',
+          memory.content,
+          [],
+          5
+        );
+      }
+      
+      console.log('[ResetBrain] Adding summaries...');
+      // Add all summaries from backup using summarize method
+      for (const summary of defaultBackup.data.memorySummaries) {
+        await amoBrainService.summarize(
+          appScope,
+          'brain-reset',
+          summary.id,
+          summary.summary,
+          []
+        );
+      }
+      
+      console.log('[ResetBrain] Refreshing brain state...');
+      await refreshBrainState();
+      
+      // Check final counts
+      const finalMemory = await amoBrainService.getConversationMemory(appScope);
+      const finalSummaries = await amoBrainService.getMemorySummaries(appScope);
+      const finalPacks = await amoBrainService.getSeedPacks();
+      
+      console.log('[ResetBrain] Final counts:', {
+        memory: finalMemory.length,
+        summaries: finalSummaries.length,
+        packs: finalPacks.length
+      });
+      
+      setDownloadStatus('Brain reset successfully!');
+      setAreStarterPacksImported(true);
+      localStorage.setItem('amo_starter_packs_imported', 'true');
+    } catch (error) {
+      console.error('Failed to reset brain:', error);
+      setDownloadStatus('Failed to reset brain.');
     }
   };
 
@@ -1215,21 +1457,50 @@ export default function App({ ready = true }: AppProps) {
     const appScope = 'app:ask-amo';
     const title = trimForNativePrompt(userContent.replace(/\s+/g, ' ').trim(), 72) || 'Chat exchange';
     const summary = buildConversationSummary(userContent, assistantContent);
+    const isCloudModel = selectedModel.family !== 'native';
 
     try {
       await Promise.all([
-        amoBrainService.remember(scope, title, summary, ['chat', 'exchange', 'local-first'], 1),
-        amoBrainService.remember(appScope, title, summary, ['app', 'exchange', 'ask-amo'], 1),
+        amoBrainService.remember(scope, title, summary, ['chat', 'exchange', isCloudModel ? 'cloud-response' : 'local-response'], 1),
+        amoBrainService.remember(appScope, title, summary, ['app', 'exchange', 'ask-amo', isCloudModel ? 'cloud-response' : 'local-response'], 1),
         amoBrainService.summarize(scope, 'conversation', currentChatId, summary, ['chat', 'amo', 'exchange']),
         amoBrainService.summarize(appScope, 'conversation', currentChatId, summary, ['app', 'amo', 'exchange']),
       ]);
 
       void brainLearningService.analyseAndLearn(userContent, assistantContent, currentChatId);
 
+      // Record cloud responses for local model learning
+      if (isCloudModel && assistantContent.length > 50) {
+        void recordCloudResponseForLocalLearning(userContent, assistantContent);
+      }
+
       await refreshBrainState();
     } catch (brainError) {
       console.error('[AskAmo] Failed to persist exchange to brain:', brainError);
       setDownloadStatus(`Brain write failed: ${brainError instanceof Error ? brainError.message : 'unknown error'}`);
+    }
+  };
+
+  // Store successful cloud responses as reference examples for local models
+  const recordCloudResponseForLocalLearning = async (question: string, answer: string): Promise<void> => {
+    try {
+      const questionKey = question.toLowerCase().replace(/[^\w\s]/g, ' ').trim().slice(0, 100);
+      await knowledgeStoreService.upsertChunk({
+        id: `cloud-ref-${Date.now()}`,
+        documentId: 'cloud-reference-responses',
+        documentName: 'Cloud Model Reference',
+        content: `Q: ${question}\nA: ${answer}`,
+        embedding: new Array(384).fill(0), // Placeholder — vectorDbService.generateEmbedding used elsewhere
+        metadata: {
+          assetKind: 'cloud-reference',
+          questionKey,
+          answerLength: answer.length,
+          timestamp: Date.now(),
+        },
+      });
+    } catch (err) {
+      // Non-critical — don't block the user
+      console.debug('[AskAmo] Cloud reference recording skipped:', err);
     }
   };
 
@@ -1339,7 +1610,22 @@ export default function App({ ready = true }: AppProps) {
   };
 
   const resolveWebAssistContext = async (userPrompt: string): Promise<string | undefined> => {
-    const shouldSearch = navigator.onLine && isWebSearchEnabled && shouldUseWebSearch(userPrompt);
+    const isNativeModel = selectedModel.family === 'native';
+    
+    // Cloud models: search when query looks like it needs web info
+    // Native/offline models: only search when toggle is ON and query matches
+    let shouldSearch: boolean;
+    if (!navigator.onLine) {
+      shouldSearch = false;
+    } else if (isNativeModel) {
+      // Native model: requires toggle ON and matching query
+      shouldSearch = isWebSearchEnabled && shouldUseWebSearch(userPrompt);
+    } else {
+      // Cloud model: search when query appears to need current info
+      // Skip search for simple greetings, math, opinions, etc.
+      shouldSearch = shouldUseWebSearch(userPrompt);
+    }
+    
     if (!shouldSearch) {
       setIsWebAssistActive(false);
       return undefined;
@@ -1374,6 +1660,101 @@ export default function App({ ready = true }: AppProps) {
     return canceledRequestIdsRef.current.has(requestId) || activeRequestIdRef.current !== requestId;
   };
 
+  // ── CODE TO EDITOR ────────────────────────────────────────────────────────────
+  // Auto-save substantial code blocks to the editor instead of cluttering chat
+  
+  const wantsCodeInChat = (userInput: string): boolean => {
+    const normalized = userInput.toLowerCase();
+    return /\b(show me the code|code in chat|code here|give me the code|write the code here|display the code|print the code|inline code)\b/.test(normalized);
+  };
+
+  const extractLanguage = (langHint: string): string => {
+    const langMap: Record<string, string> = {
+      'js': 'javascript', 'javascript': 'javascript',
+      'ts': 'typescript', 'typescript': 'typescript',
+      'py': 'python', 'python': 'python',
+      'rb': 'ruby', 'ruby': 'ruby',
+      'go': 'go', 'golang': 'go',
+      'rs': 'rust', 'rust': 'rust',
+      'java': 'java',
+      'kt': 'kotlin', 'kotlin': 'kotlin',
+      'cpp': 'cpp', 'c++': 'cpp', 'c': 'c',
+      'cs': 'csharp', 'csharp': 'csharp',
+      'php': 'php',
+      'swift': 'swift',
+      'dart': 'dart',
+      'lua': 'lua',
+      'sh': 'shell', 'bash': 'shell', 'shell': 'shell',
+      'sql': 'sql',
+      'html': 'html', 'htm': 'html',
+      'css': 'css',
+      'json': 'json',
+      'md': 'markdown', 'markdown': 'markdown',
+    };
+    return langMap[langHint.toLowerCase()] || langHint || 'unknown';
+  };
+
+  const getExtensionForLanguage = (lang: string): string => {
+    const extMap: Record<string, string> = {
+      'javascript': '.js', 'typescript': '.ts', 'python': '.py',
+      'ruby': '.rb', 'go': '.go', 'rust': '.rs', 'java': '.java',
+      'kotlin': '.kt', 'cpp': '.cpp', 'c': '.c', 'csharp': '.cs',
+      'php': '.php', 'swift': '.swift', 'dart': '.dart', 'lua': '.lua',
+      'shell': '.sh', 'sql': '.sql', 'html': '.html', 'css': '.css',
+      'json': '.json', 'markdown': '.md',
+    };
+    return extMap[lang] || '.txt';
+  };
+
+  const processCodeBlocks = async (response: string, userPrompt: string): Promise<{ text: string; saved: boolean }> => {
+    // Match code blocks: ```language\n...code...\n``` or ```language code ``` (flexible)
+    const codeBlockRegex = /```(\w*)\s*\n?([\s\S]*?)```/g;
+    const matches = [...response.matchAll(codeBlockRegex)];
+
+    if (matches.length === 0) {
+      return { text: response, saved: false };
+    }
+
+    let modifiedResponse = response;
+    let savedCount = 0;
+
+    for (const match of matches) {
+      const [fullMatch, langHint, code] = match;
+      const trimmedCode = code.trim();
+      const lines = trimmedCode.split('\n');
+
+      // Save ALL code blocks with 2+ lines
+      if (lines.length < 2) {
+        continue;
+      }
+
+      const language = extractLanguage(langHint);
+      const extension = getExtensionForLanguage(language);
+      const filename = `amo-generated-${Date.now()}-${savedCount}${extension}`;
+
+      try {
+        // Store code for the editor
+        setPendingEditorCode({ code: trimmedCode, filename });
+        savedCount++;
+
+        // Always replace with a reference — user can switch to editor to see it
+        const replacement = `[Code saved to \`${filename}\` — switch to Code Editor to view and edit]`;
+        modifiedResponse = modifiedResponse.replace(fullMatch, replacement);
+
+        // Switch to editor view automatically
+        setActiveView('editor');
+      } catch (err) {
+        console.error('[AskAmo] Failed to save code to editor:', err);
+      }
+    }
+
+    if (savedCount > 0) {
+      modifiedResponse += `\n\nSaved ${savedCount} code block${savedCount > 1 ? 's' : ''} to Code Editor.`;
+    }
+
+    return { text: modifiedResponse, saved: savedCount > 0 };
+  };
+
    const handleSend = async () => {
      if (!inputRef.current.trim() || isLoading) return;
      const routedIntent = routeUserIntent(inputRef.current);
@@ -1385,22 +1766,24 @@ export default function App({ ready = true }: AppProps) {
        userPrompt = contextResult.enhancedPrompt;
      }
        
-       const pendingImage = selectedImage;
-         
+        const pendingImage = selectedImage;
+          
         // Auto-switch to vision model if image is attached and current model doesn't support vision
+        let runtimeModel = selectedModel;
         if (pendingImage && !selectedModel.isVision) {
           // Prefer cloud vision models
           const geminiVision = AVAILABLE_MODELS.find(m => m.isVision && m.family === 'gemini');
           const cloudVision = AVAILABLE_MODELS.find(m => m.isVision && m.isCloud);
           const visionModel = geminiVision || cloudVision;
           if (visionModel) {
+            runtimeModel = visionModel;
             setSelectedModel(visionModel);
           }
         }
         
          // For native vision models, embed image in prompt (llama.cpp vision format)
          let visionPromptSuffix = '';
-         if (pendingImage && selectedModel.isVision && selectedModel.family === 'native') {
+         if (pendingImage && runtimeModel.isVision && runtimeModel.family === 'native') {
            visionPromptSuffix = `\n\n<image>${pendingImage}</image>`;
          }
      
@@ -1442,8 +1825,13 @@ export default function App({ ready = true }: AppProps) {
         }
       }
 
-      // IDE tasks — Amo actually executes, not just opens
-      if (isIdeIntent(userPrompt)) {
+       // IDE tasks — Amo actually executes, not just opens
+       if (isIdeIntent(userPrompt)) {
+        toastService.add('Amo Working', 'Executing your request...', { 
+          type: 'info', 
+          duration: 3000,
+          category: 'workflow'
+        });
         const slots = extractSlots(userPrompt);
         const enrichedQuery = slotsToKnowledgeQuery(slots);
         const promptHint = slotsToPromptHint(slots);
@@ -1462,15 +1850,8 @@ export default function App({ ready = true }: AppProps) {
         if (toolResult.viewSwitch) setActiveView(toolResult.viewSwitch as AmoView);
         if (toolResult.webViewUrl) setWebViewUrl(toolResult.webViewUrl);
 
-        if (toolResult.instantReply && !toolResult.contextBlock) {
-          updateMessage(assistantId, toolResult.instantReply, false);
-          finalizeMessage(assistantId);
-          await persistExchangeToBrain(userPrompt, toolResult.instantReply);
-          if (isVoiceModeRef.current) void speak(toolResult.instantReply);
-          setIsLoading(false);
-          setAmoRuntimeState('waiting');
-          return;
-        }
+        // Always run IDE loop for agentic execution — don't just give advice
+        // The coordinator's instantReply is passed as context, not a substitute for action
 
         const history = messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
         const bundle = await assistantRuntimeService.buildContextBundle({
@@ -1534,7 +1915,10 @@ export default function App({ ready = true }: AppProps) {
           onStatus: (s) => { console.info('[IDE]', s); },
           onViewSwitch: (v) => setActiveView(v as AmoView),
           onWebViewUrl: (url) => setWebViewUrl(url),
-          onPreviewFile: (_p, _c) => setActiveView('editor'),
+          onPreviewFile: (path, content) => {
+            setActiveView('editor');
+            setPendingEditorCode({ code: content, filename: path.split('/').pop() || 'file.txt' });
+          },
           generate: generateFn,
         });
 
@@ -1543,6 +1927,16 @@ export default function App({ ready = true }: AppProps) {
           finalizeMessage(assistantId);
           await persistExchangeToBrain(userPrompt, loopResult.finalReply);
           if (isVoiceModeRef.current) void speak(loopResult.finalReply);
+          
+          // Show completion toast
+          const filesCount = loopResult.filesCreated?.length || 0;
+          const commandsCount = loopResult.commandsRun?.length || 0;
+          if (filesCount > 0 || commandsCount > 0) {
+            toastService.add('Task Complete', 
+              `Created ${filesCount} file(s), ran ${commandsCount} command(s)`, 
+              { type: 'success', duration: 4000, category: 'workflow' }
+            );
+          }
         }
         setIsLoading(false);
         setAmoRuntimeState('waiting');
@@ -1578,8 +1972,8 @@ export default function App({ ready = true }: AppProps) {
           }
 
          const bundle = selectedModel.family === 'native'
-           ? await assistantRuntimeService.buildNativeContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, webContext: webSearchContext })
-           : await assistantRuntimeService.buildContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, includeKnowledge: true, webContext: webSearchContext });
+           ? await assistantRuntimeService.buildNativeContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, webContext: webSearchContext, forceRetrieval: routedIntent.forceRetrieval })
+           : await assistantRuntimeService.buildContextBundle({ scope: `chat:${currentChatId}`, userInput: userPrompt, messages: history, includeKnowledge: true, webContext: webSearchContext, forceRetrieval: routedIntent.forceRetrieval });
 
          const nativeSelected = selectedModel.family === 'native';
           if (nativeSelected && localRuntimeState.capability !== 'ready') {
@@ -1596,8 +1990,6 @@ export default function App({ ready = true }: AppProps) {
             setError('The configured cloud model is not ready. Add an API key or select a different model.');
             return;
           }
-
-         const runtimeModel = selectedModel;
 
           let reply = '';
            if (runtimeModel.isCloud) {
@@ -1647,24 +2039,43 @@ export default function App({ ready = true }: AppProps) {
                 throw new Error(`Unsupported cloud model family: ${runtimeModel.family}`);
             }
 
+            // Process code blocks - save substantial code to editor instead of chat
+            const processed = await processCodeBlocks(reply, userPrompt);
+            reply = processed.text;
+
             updateMessage(assistantId, reply, false);
             finalizeMessage(assistantId);
             await persistExchangeToBrain(userPrompt, reply);
-            if (isVoiceModeRef.current) speak(reply);
+            if (isVoiceModeRef.current) { speak(reply); } else { console.log('[Voice] Voice mode off, not speaking'); }
           } else {
-            // Native offline model (llama.cpp via Android JNI)
-            const systemPrompt = bundle.combinedContext
-              ? `You are Amo, a grounded New Zealand assistant.\n\n${bundle.combinedContext}`
-              : 'You are Amo, a grounded New Zealand assistant.';
-            const prompt = `${systemPrompt}\n\n${history.map(m => `${m.role === 'user' ? 'User' : 'Amo'}: ${m.content}`).join('\n')}\nUser: ${userPrompt}\nAmo:`;
+            // Native offline model — use orchestrator for CoT, few-shot, feature guide, bad-response fallback
+            const session = history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+            const knowledgeContext = bundle.combinedContext || undefined;
             
             try {
-              const result = await nativeOfflineLlmService.generate({
-                prompt,
-                temperature: 0.7,
-                max_tokens: 2048,
+              const params = useModelSettingsStore.getState();
+              const result = await nativeAssistantOrchestrator.generateReply({
+                userInput: userPrompt + visionPromptSuffix,
+                session,
+                knowledgeContext,
+                webContext: webSearchContext,
+                runPrompt: async (prompt, timeoutMessage) => {
+                  const res = await nativeOfflineLlmService.generate({
+                    prompt,
+                    temperature: params.temperature,
+                    top_p: params.topP,
+                    max_tokens: params.maxTokens,
+                  });
+                  return { text: res?.text?.trim() || '', status: null };
+                },
               });
-              reply = result?.text?.trim() || 'No response from native model.';
+              
+              reply = result.text;
+              
+              // Process code blocks - save substantial code to editor instead of chat
+              const processedNative = await processCodeBlocks(reply, userPrompt);
+              reply = processedNative.text;
+              
               updateMessage(assistantId, reply, false);
               finalizeMessage(assistantId);
               await persistExchangeToBrain(userPrompt, reply);
@@ -1683,47 +2094,203 @@ export default function App({ ready = true }: AppProps) {
       }
     };
 
-   const speak = async (text: string) => {
-     // Chunked TTS for better responsiveness - speak as soon as we have complete sentences
-     if (!text || text.trim().length === 0) {
-       return;
-     }
+    const speak = async (text: string) => {
+      // Chunked TTS for better responsiveness - speak as soon as we have complete sentences
+      if (!text || text.trim().length === 0) {
+        console.log('[Speak] Skipping empty text');
+        return;
+      }
 
-     // Split text into sentences for more natural chunking
-     const sentenceEndRegex = /[.!?]+/g;
-     const sentences = text.split(sentenceEndRegex);
-     const delimiters = text.match(sentenceEndRegex) || [];
+      // Strip markdown symbols and special characters for natural speech
+      const stripSymbolsForSpeech = (input: string): string => {
+        return input
+          .replace(/```[\s\S]*?```/g, '[code block]')      // Code blocks → placeholder
+          .replace(/`([^`]+)`/g, '$1')                       // Inline code → text
+          .replace(/\*\*([^*]+)\*\*/g, '$1')                 // Bold → text
+          .replace(/\*([^*]+)\*/g, '$1')                     // Italic → text
+          .replace(/#{1,6}\s*/g, '')                         // Headers → text
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')          // Links → text only
+          .replace(/→/g, 'then')                             // Arrows → words
+          .replace(/←/g, 'from')
+          .replace(/•/g, '')                                 // Bullets → remove
+          .replace(/✓/g, 'done')                             // Checkmarks
+          .replace(/✗/g, 'failed')                           // X marks
+          .replace(/├──|└──|│/g, '')                         // Tree chars
+          .replace(/\|/g, ' ')                               // Pipes
+          .replace(/[_~^>]/g, '')                            // Other markdown
+          .replace(/\s+/g, ' ')                              // Collapse whitespace
+          .trim();
+      };
+
+      const cleanText = stripSymbolsForSpeech(text);
+      if (cleanText.length === 0) return;
+
+      console.log('[Speak] Attempting to speak:', cleanText.substring(0, 50) + '...');
+      console.log('[Speak] Native TTS available:', nativeTtsService.isAvailable(), 'ready:', nativeTtsStatus?.ready);
+      console.log('[Speak] SpeechT5 ready:', speechT5Service.isReady());
+      console.log('[Speak] speechSynthesis available:', 'speechSynthesis' in window);
+
+      try {
+        // Try native TTS first (Android)
+        if (nativeTtsService.isAvailable() && nativeTtsStatus?.ready) {
+          console.log('[Speak] Using native TTS');
+          
+          // Get the best voice based on current persona
+          const bestVoices = getSelectableNativeTtsVoices(nativeTtsStatus);
+          const bestVoice = bestVoices.length > 0 ? bestVoices[0] : null;
+
+          if (!bestVoice) {
+            console.warn('No suitable native voice found. Available voices:', nativeTtsStatus?.availableVoices);
+          }
+
+          // Split text into sentences for more natural chunking
+          const sentenceEndRegex = /[.!?]+/g;
+          const sentences = cleanText.split(sentenceEndRegex);
+          const delimiters = cleanText.match(sentenceEndRegex) || [];
+          
+          // Reconstruct sentences with their delimiters
+          const sentenceChunks: string[] = [];
+          for (let i = 0; i < sentences.length; i++) {
+            let chunk = sentences[i].trim();
+            if (chunk === '' && i < sentences.length - 1) {
+              // Skip empty sentences
+              continue;
+            }
+            if (i < delimiters.length) {
+              chunk += delimiters[i];
+            }
+            if (chunk.length > 0) {
+              sentenceChunks.push(chunk);
+            }
+          }
+
+          // Speak each sentence chunk with slight delay to avoid audio overlap
+          for (let i = 0; i < sentenceChunks.length; i++) {
+            const chunk = sentenceChunks[i];
+            if (chunk.trim().length > 0) {
+              const result = await nativeTtsService.speak({
+                text: chunk,
+                language: bestVoice?.locale || 'en-NZ',
+                voiceName: bestVoice?.name,
+              });
+              
+              if (!result) {
+                console.error(`Failed to speak chunk ${i + 1}/${sentenceChunks.length}: "${chunk}"`);
+              }
+
+              // Small pause between chunks to prevent audio clipping
+              if (i < sentenceChunks.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 150));
+              }
+            }
+          }
+          return;
+        }
+
+        // Try web SpeechT5 if ready (offline AI model)
+        if (speechT5Service.isReady()) {
+          console.log('[Speak] Using web SpeechT5 TTS');
+          try {
+            await speechT5Service.speak(cleanText);
+            return;
+          } catch (speechT5Error) {
+            console.error('[Speak] SpeechT5 failed:', speechT5Error);
+            // Fall through to browser-native TTS
+          }
+        }
+
+        // Final fallback: browser-native speechSynthesis API (most reliable)
+        if ('speechSynthesis' in window) {
+          console.log('[Speak] Using browser-native speechSynthesis API');
+          window.speechSynthesis.cancel(); // Cancel any previous speech
+
+          await new Promise<void>((resolve, reject) => {
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+
+            // Timeout after 30 seconds (Chrome/Safari may not fire onend reliably)
+            const timeout = setTimeout(() => {
+              console.warn('[Speak] speechSynthesis timed out, resolving anyway');
+              resolve();
+            }, 30000);
+
+            utterance.onstart = () => console.log('[Speak] speechSynthesis started');
+            utterance.onend = () => {
+              clearTimeout(timeout);
+              console.log('[Speak] speechSynthesis finished');
+              resolve();
+            };
+            utterance.onerror = (event) => {
+              clearTimeout(timeout);
+              console.error('[Speak] speechSynthesis error:', event.error, event);
+              resolve(); // Resolve instead of reject to avoid blocking
+            };
+
+            window.speechSynthesis.speak(utterance);
+          });
+          return;
+        }
+
+        console.warn('[Speak] No TTS available on this platform');
+      } catch (err) {
+        console.error('[Speak] Error in speak function:', err);
+      }
+    };
+
+   /**
+    * Handle voice-assisted web search
+    * Triggered when user speaks a query that should trigger web search
+    */
+   const handleVoiceWebSearch = async (query: string) => {
+     console.log('[VoiceWebAssist] Processing query:', query);
      
-     // Reconstruct sentences with their delimiters
-     const sentenceChunks: string[] = [];
-     for (let i = 0; i < sentences.length; i++) {
-       let chunk = sentences[i].trim();
-       if (chunk === '' && i < sentences.length - 1) {
-         // Skip empty sentences
-         continue;
+     try {
+       // Check if this query should trigger web search
+       if (!shouldUseWebSearch(query)) {
+         console.log('[VoiceWebAssist] Query not suitable for web search');
+         return false;
        }
-       if (i < delimiters.length) {
-         chunk += delimiters[i];
-       }
-       if (chunk.length > 0) {
-         sentenceChunks.push(chunk);
-       }
-     }
 
-     // Speak each sentence chunk with slight delay to avoid audio overlap
-     for (let i = 0; i < sentenceChunks.length; i++) {
-       const chunk = sentenceChunks[i];
-       if (chunk.trim().length > 0) {
-         await nativeTtsService.speak({ text: chunk, language: 'en-NZ' });
-         // Small pause between chunks to prevent audio clipping
-         if (i < sentenceChunks.length - 1) {
-           await new Promise(resolve => setTimeout(resolve, 150));
-         }
+       // Perform voice web assist
+       const response = await voiceWebAssistService.assistWithVoice(query, {
+         timeout: 8000,
+         maxResults: 3,
+         speakResults: false, // We'll handle speaking manually for better control
+         verbose: true,
+       });
+
+       console.log('[VoiceWebAssist] Response:', response);
+
+       // Add messages to chat
+       addMessage('user', query);
+       addMessage('assistant', response.voiceSummary);
+
+       // Speak the results if voice mode is enabled
+       if (isVoiceModeRef.current && response.voiceSummary) {
+         await speak(response.voiceSummary);
        }
+
+       // Store results for potential follow-up queries
+       sessionStorage.setItem(
+         'lastVoiceWebResults',
+         JSON.stringify(response)
+       );
+
+       return true;
+     } catch (error) {
+       console.error('[VoiceWebAssist] Error processing voice web query:', error);
+       const errorMsg = 'I had trouble searching the web. Please try again.';
+       addMessage('assistant', errorMsg);
+       if (isVoiceModeRef.current) {
+         await speak(errorMsg);
+       }
+       return false;
      }
    };
 
-  const syncUploadedDocsFromStorage = async () => {
+   const syncUploadedDocsFromStorage = async () => {
     await vectorDbService.loadFromStorage();
     const docs = vectorDbService.getDocuments();
     const unique = Array.from(new Set(docs.map(d => d.documentId))).map(id => {
@@ -1774,12 +2341,12 @@ export default function App({ ready = true }: AppProps) {
       const parsed = await documentService.parseFile(file);
       const id = crypto.randomUUID();
 
-      await knowledgeStoreService.upsertChunk({
+      // Use vectorDbService to generate real embeddings
+      await vectorDbService.addDocument({
         id,
         documentId: id,
         documentName: parsed.title || file.name,
         content: parsed.content,
-        embedding: new Array(1536).fill(0), // TODO: generate real embeddings
         metadata: {
           assetKind: 'document',
           format: parsed.format,
@@ -1814,12 +2381,11 @@ export default function App({ ready = true }: AppProps) {
     try {
       const id = crypto.randomUUID();
       const content = await file.text();
-      await knowledgeStoreService.upsertChunk({
+      await vectorDbService.addDocument({
         id,
         documentId: id,
         documentName: file.name,
         content,
-        embedding: new Array(1536).fill(0), // TODO: generate real embeddings
         metadata: { assetKind: 'skill' },
       });
       setUploadedDocs((current) => [...current, { id, name: file.name, kind: 'skill' }]);
@@ -1896,33 +2462,60 @@ export default function App({ ready = true }: AppProps) {
              console.log('[Voice] Interim:', text);
              return;
            }
-           console.log('[Voice] Final:', text);
-           if (!text.trim()) {
-             setIsListening(false);
-             return;
-           }
-           inputRef.current = text;
-           setInput(text);
-           requestAnimationFrame(() => {
-             requestAnimationFrame(async () => {
-               await handleSend();
-               // Only restart if voiceContinuous is still enabled and not loading
-               if (voiceContinuous && !isLoading) {
-                 // Clear any existing timer before setting a new one to prevent duplicates
-                 if (voiceRestartTimerRef.current) {
-                   clearTimeout(voiceRestartTimerRef.current);
-                 }
-                 voiceRestartTimerRef.current = setTimeout(() => {
-                   setIsListening(true);
-                   void audioCaptureService.start();
-                   voiceRestartTimerRef.current = null;
-                 }, 800);
-               }
-             });
-           });
-           if (!voiceContinuous) {
-             setIsListening(false);
-           }
+            console.log('[Voice] Final:', text);
+            if (!text.trim()) {
+              setIsListening(false);
+              return;
+            }
+            inputRef.current = text;
+            setInput(text);
+            requestAnimationFrame(() => {
+              requestAnimationFrame(async () => {
+                // Check if this is a web search query and handle it with voice assist
+                const isWebQuery = shouldUseWebSearch(text) && navigator.onLine && isWebSearchEnabled;
+                
+                if (isWebQuery) {
+                  console.log('[Voice] Web query detected, using voice web assist');
+                  const handled = await handleVoiceWebSearch(text);
+                  
+                  if (handled) {
+                    // Web search was successful, don't send to regular handler
+                    if (voiceContinuous && !isLoading) {
+                      if (voiceRestartTimerRef.current) {
+                        clearTimeout(voiceRestartTimerRef.current);
+                      }
+                      voiceRestartTimerRef.current = setTimeout(() => {
+                        setIsListening(true);
+                        void audioCaptureService.start();
+                        voiceRestartTimerRef.current = null;
+                      }, 800);
+                    }
+                    if (!voiceContinuous) {
+                      setIsListening(false);
+                    }
+                    return;
+                  }
+                }
+                
+                // Not a web query or web query failed, use regular handler
+                await handleSend();
+                // Only restart if voiceContinuous is still enabled and not loading
+                if (voiceContinuous && !isLoading) {
+                  // Clear any existing timer before setting a new one to prevent duplicates
+                  if (voiceRestartTimerRef.current) {
+                    clearTimeout(voiceRestartTimerRef.current);
+                  }
+                  voiceRestartTimerRef.current = setTimeout(() => {
+                    setIsListening(true);
+                    void audioCaptureService.start();
+                    voiceRestartTimerRef.current = null;
+                  }, 800);
+                }
+              });
+            });
+            if (!voiceContinuous) {
+              setIsListening(false);
+            }
          },
          (error: string) => {
            console.error('[Voice] Error:', error);
@@ -2027,11 +2620,16 @@ export default function App({ ready = true }: AppProps) {
             <span className="font-serif italic font-bold text-4xl text-white tracking-wider">A</span>
           </div>
           <h1 className="font-serif italic font-semibold text-2xl tracking-[0.2em] text-white mb-2">ASK AMO</h1>
-          <div className="flex items-center gap-2 text-white/50">
+          <div className="flex items-center gap-2 text-white/50 mb-2">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="text-sm">Initializing brain & knowledge...</span>
+            <span className="text-sm">{downloadStatus || 'Initializing...'}</span>
           </div>
-          <p className="text-xs text-white/30 mt-4">First launch may take 10-30 seconds</p>
+          <p className="text-xs text-white/30 mt-2">First launch may take 10-30 seconds</p>
+          {error && (
+            <div className="mt-4 px-4 py-2 bg-red-500/20 border border-red-500/50 rounded-lg">
+              <p className="text-xs text-red-400">{error}</p>
+            </div>
+          )}
         </div>
       )}
       <ErrorBoundary fallback={DefaultFallback}>
@@ -2120,6 +2718,7 @@ export default function App({ ready = true }: AppProps) {
           onSaveCurrentPage={handleSaveCurrentPage}
           onExportBrain={handleExportBrain}
           onImportBrain={handleImportBrain}
+          onRestoreDefaultBrain={handleRestoreDefaultBrain}
           selectedModelId={selectedModel.id}
           availableModels={AVAILABLE_MODELS}
           onSelectModel={(id) => { 
@@ -2325,7 +2924,12 @@ export default function App({ ready = true }: AppProps) {
 
             {activeView === 'editor' && (
               <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
-                <CodeEditor />
+                <CodeEditor 
+                  initialCode={pendingEditorCode?.code} 
+                  initialFileName={pendingEditorCode?.filename}
+                  autoRun={pendingEditorCode?.autoRun}
+                  onOutputCapture={(output) => setAmoTerminalOutput(output)}
+                />
               </div>
             )}
 
@@ -2439,6 +3043,52 @@ export default function App({ ready = true }: AppProps) {
           )}
         </main>
       </div>
+      
+      {/* Brain Reset Confirmation Dialog */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel border border-white/10 rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-white mb-3">Reset Amo's Brain?</h3>
+            <p className="text-sm text-white/70 mb-6">
+              This will clear all of Amo's memories, knowledge, and learning. This action cannot be undone unless you save a backup first.
+            </p>
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => handleConfirmReset(true)}
+                disabled={isSavingBeforeReset}
+                className="w-full py-3 px-4 bg-[#ff4e00] hover:bg-[#ff4e00]/80 text-white rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isSavingBeforeReset ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Saving & Resetting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Save Brain & Reset
+                  </>
+                )}
+              </button>
+              
+              <button
+                onClick={() => handleConfirmReset(false)}
+                className="w-full py-3 px-4 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-all"
+              >
+                Reset Without Saving
+              </button>
+              
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="w-full py-3 px-4 text-white/60 hover:text-white/80 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Toast Container */}
       <ToastContainer

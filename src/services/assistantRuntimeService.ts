@@ -1,5 +1,6 @@
 import { amoBrainService } from './amoBrainService';
 import { vectorDbService } from './vectorDbService';
+import { voicePersonaService } from './voicePersonaService';
 
 interface RuntimeMessage {
   role: 'user' | 'assistant' | 'system';
@@ -69,25 +70,22 @@ function buildRecentTurns(messages: RuntimeMessage[], limit = 4): string {
 }
 
 function buildOperationalGuidance(intent: string): string {
-  const lines = [
-    'You are Amo — a grounded, practical, honest AI assistant with a calm NZ voice.',
-    'You are direct and clear. You never pad responses. You never make things up.',
-    'If something is unclear, ask one short clarifying question.',
-    'Prefer local knowledge and memory before using live web.',
-    'Give an immediate direct answer first whenever possible.',
-    'Use plain language. Avoid jargon unless the user uses it first.',
-  ];
-
+  const persona = voicePersonaService.getActivePersona();
+  
+  // Start with the persona's core operational guidance
+  const baseLines = persona.operationalGuidance.split('\n');
+  
+  // Add intent-specific guidance based on the base persona
   if (intent === 'task' || intent === 'instruction') {
-    lines.push('Break complex tasks into numbered steps. Verify results before moving on.');
-    lines.push('Prefer terminal for execution tasks, WebView for research and browsing.');
+    baseLines.push('Break complex tasks into numbered steps. Verify results before moving on.');
+    baseLines.push('Prefer terminal for execution tasks, WebView for research and browsing.');
   }
 
   if (intent === 'question') {
-    lines.push('Answer the question directly first, then add context if genuinely useful.');
+    baseLines.push('Answer the question directly first, then add context if genuinely useful.');
   }
 
-  return lines.join('\n');
+  return baseLines.join('\n');
 }
 
 export const assistantRuntimeService = {
@@ -96,8 +94,9 @@ export const assistantRuntimeService = {
     userInput: string;
     messages: RuntimeMessage[];
     webContext?: string;
+    forceRetrieval?: boolean;
   }): Promise<AssistantContextBundle> {
-    const memoryContext = await amoBrainService.buildFastContext(options.scope, options.userInput);
+    const memoryContext = await amoBrainService.buildFastContext(options.scope, options.userInput, options.forceRetrieval);
     const compactTurns = options.messages
       .filter((message) => message.role === 'user' || message.role === 'assistant')
       .slice(-6)
@@ -131,9 +130,10 @@ export const assistantRuntimeService = {
     messages: RuntimeMessage[];
     includeKnowledge: boolean;
     webContext?: string;
+    forceRetrieval?: boolean;
   }): Promise<AssistantContextBundle> {
     const [memoryContext, knowledgeResults] = await Promise.all([
-      amoBrainService.buildFastContext(options.scope, options.userInput),
+      amoBrainService.buildFastContext(options.scope, options.userInput, options.forceRetrieval),
       options.includeKnowledge ? vectorDbService.search(options.userInput, 8) : Promise.resolve([]),
     ]);
 

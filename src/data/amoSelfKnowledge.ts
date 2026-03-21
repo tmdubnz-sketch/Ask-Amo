@@ -224,15 +224,27 @@ Supported workflow: write in Editor, run in Terminal, ask Amo to debug or improv
   // ── VOICE ─────────────────────────────────────────────────────────────────
   {
     id: 'amo-feature-voice',
-    title: 'Voice Mode and microphone — how to use voice with Amo',
-    tags: ['voice', 'microphone', 'speak', 'listen', 'tts', 'speech', 'audio', 'talk', 'dictate'],
-    content: `Amo supports both voice input (speech-to-text) and voice output (text-to-speech).
+    title: 'Voice Mode and Personalities — how to use voice with Amo',
+    tags: ['voice', 'microphone', 'speak', 'listen', 'tts', 'speech', 'audio', 'talk', 'dictate', 'personality', 'persona'],
+    content: `Amo supports both voice input (speech-to-text) and voice output (text-to-speech), with multiple personality modes.
+
 Voice Input: tap the microphone icon in the chat input bar. Amo records and transcribes using Whisper via Groq.
+
 Voice Mode: in Settings > General, toggle Voice Mode ON. When enabled, Amo speaks every reply aloud automatically.
 Amo uses Android's native TTS engine for spoken replies, preferring NZ or AU English voices when available.
 To stop Amo speaking mid-reply, this is handled automatically when a new message is sent.
 Voice mode works best with a Groq API key configured, since transcription uses the Whisper cloud model.
-Offline voice output still works using the device's built-in TTS engine without internet.`,
+Offline voice output still works using the device's built-in TTS engine without internet.
+
+Voice Personalities: Amo has multiple personality modes you can switch between:
+- Professional/Corporate: Commanding, authoritative, business-focused tone with deep vocal presence
+- Casual/Friendly: Relaxed, approachable, conversational like a knowledgeable friend
+- Witty/Humorous: Clever, sarcastic, quick-witted with frequent wordplay and humor
+- Educational/Teacher: Patient, explanatory, encouraging with clear learning-focused guidance
+- Creative/Artistic: Imaginative, poetic, expressive focusing on beauty and meaning
+
+Each personality has its own speaking style, response patterns, and voice preferences. Change your personality mode in Settings > Voice.
+The current personality (Professional/Corporate) combines commanding vocal depth with strategic business acumen.`,
   },
 
   // ── MODELS ────────────────────────────────────────────────────────────────

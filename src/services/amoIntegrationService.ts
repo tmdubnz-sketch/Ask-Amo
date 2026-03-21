@@ -1,6 +1,7 @@
 import { amoBrainService } from './amoBrainService';
 import { amoToolCoordinator } from './amoToolCoordinator';
-import { runIdeLoop } from './amoIdeLoop';
+import { runIdeLoop, type IdeLoopResult } from './amoIdeLoop';
+import { matchTaskTemplate } from './amoIdeLoop';
 import { createError, logError, ERROR_CODES } from './errorHandlingService';
 import type { ExtractedSlots } from './slotExtractorService';
 
@@ -22,6 +23,17 @@ export interface IntegrationResult {
   contextBlock: string;
   success: boolean;
   error?: string;
+  ideLoopResult?: IdeLoopResult;
+}
+
+export interface IdeCallbacks {
+  onPartialReply: (text: string) => void;
+  onViewSwitch: (view: string) => void;
+  onWebViewUrl: (url: string) => void;
+  onPreviewFile: (path: string, content: string) => void;
+  onStatus: (status: string) => void;
+  generate: (messages: Array<{role: string; content: string}>, systemPrompt: string) => Promise<string>;
+  isRequestCanceled: () => boolean;
 }
 
 export const amoIntegrationService = {
@@ -29,7 +41,7 @@ export const amoIntegrationService = {
   /**
    * Main integration point that coordinates all Amo services
    */
-  async processRequest(context: IntegrationContext): Promise<IntegrationResult> {
+  async processRequest(context: IntegrationContext, callbacks?: IdeCallbacks): Promise<IntegrationResult> {
     try {
       // 1. Check brain service for relevant context and memories
       const brainContext = await amoBrainService.buildFastContext(context.chatId, context.userInput);
@@ -40,8 +52,8 @@ export const amoIntegrationService = {
       // 3. Determine if this is an IDE task or general request
       const isIdeTask = await this.isIdeTask(context);
       
-      if (isIdeTask) {
-        return await this.handleIdeTask(context, brainContext);
+      if (isIdeTask && callbacks) {
+        return await this.handleIdeTask(context, brainContext, callbacks);
       } else {
         return await this.handleGeneralRequest(context, brainContext);
       }
@@ -62,19 +74,34 @@ export const amoIntegrationService = {
   /**
    * Handle IDE-specific tasks with the full IDE loop
    */
-  async handleIdeTask(context: IntegrationContext, brainContext: string): Promise<IntegrationResult> {
+  async handleIdeTask(context: IntegrationContext, brainContext: string, callbacks: IdeCallbacks): Promise<IntegrationResult> {
     const combinedContext = [
       context.baseContext,
       brainContext ? `---\n[Memory context]\n${brainContext}` : '',
     ].filter(Boolean).join('\n\n');
 
-    // This would need to be integrated with the actual IDE loop execution
-    // For now, return a placeholder that would be handled by the caller
+    const template = matchTaskTemplate(context.userInput);
+    const taskInput = template ? `${context.userInput}\n\nPlan:\n${template}` : context.userInput;
+
+    const loopResult = await runIdeLoop({
+      chatId: context.chatId,
+      userInput: taskInput,
+      baseContext: combinedContext,
+      isRequestCanceled: callbacks.isRequestCanceled,
+      onPartialReply: callbacks.onPartialReply,
+      onStatus: callbacks.onStatus,
+      onViewSwitch: callbacks.onViewSwitch,
+      onWebViewUrl: callbacks.onWebViewUrl,
+      onPreviewFile: callbacks.onPreviewFile,
+      generate: callbacks.generate,
+    });
+
     return {
-      response: '[IDE_TASK_DETECTED]',
+      response: loopResult.finalReply,
       toolsUsed: ['ide-loop'],
       contextBlock: combinedContext,
       success: true,
+      ideLoopResult: loopResult,
     };
   },
 
