@@ -26,6 +26,9 @@ export class GeminiService {
       throw new Error('Missing Gemini API key');
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: {
@@ -41,7 +44,8 @@ export class GeminiService {
           maxOutputTokens: options?.deepThink ? 640 : 256,
         },
       }),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

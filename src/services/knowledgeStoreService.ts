@@ -656,6 +656,53 @@ export class KnowledgeStoreService {
           ],
         },
       },
+      {
+        packId: 'amo.instant.replies',
+        packName: 'Instant Replies',
+        packType: 'knowledge',
+        version: '1',
+        description: 'Fast pattern-matched responses for common commands like open terminal, open editor, show files, etc.',
+        payload: {
+          intents: [
+            { patterns: ['open terminal', 'terminal', 'shell', 'console'], reply: 'Opening terminal now.', action: 'switch_to_terminal' },
+            { patterns: ['open editor', 'code editor', 'code', 'ide'], reply: 'Opening code editor now.', action: 'switch_to_editor' },
+            { patterns: ['open browser', 'browser', 'web', 'webview'], reply: 'Opening browser now.', action: 'switch_to_webview' },
+            { patterns: ['open settings', 'settings', 'config'], reply: 'Opening settings now.', action: 'switch_to_settings' },
+            { patterns: ['show files', 'files', 'workspace', 'my files'], reply: 'Listing workspace files now.', action: 'list_files' },
+            { patterns: ['brain status', 'memory', 'knowledge', 'status'], reply: 'Checking brain status now.', action: 'show_brain_status' },
+            { patterns: ['voice on', 'enable voice', 'speech', 'speak'], reply: 'Voice mode enabled.', action: 'enable_voice' },
+            { patterns: ['help', 'help me', 'assist'], reply: 'I can help with chat, code, web search, file management, vocabulary, and more.', action: null },
+            { patterns: ['hello', 'hi', 'hey', 'kia ora'], reply: 'Kia ora. How can I help you?', action: null },
+            { patterns: ['thanks', 'thank you', 'cheers'], reply: 'You\'re welcome.', action: null },
+            { patterns: ['clear chat', 'new chat', 'reset'], reply: 'Clearing chat now.', action: 'clear_chat' },
+          ],
+        },
+      },
+      {
+        packId: 'amo.features.guide',
+        packName: 'Features Guide',
+        packType: 'knowledge',
+        version: '1',
+        description: 'Complete guide to all Amo features for answering capability questions.',
+        payload: {
+          features: [
+            { name: 'Chat', description: 'Main conversation interface', tags: ['chat', 'message'] },
+            { name: 'Terminal', description: 'Execute shell commands', tags: ['terminal', 'shell', 'run'] },
+            { name: 'Code Editor', description: 'Write and run code', tags: ['editor', 'code', 'programming'] },
+            { name: 'Web Browser', description: 'Browse the web', tags: ['browser', 'web', 'search'] },
+            { name: 'Vocabulary Builder', description: 'Manage vocabulary', tags: ['vocabulary', 'words'] },
+            { name: 'Sentence Builder', description: 'Generate variations', tags: ['sentence', 'phrases'] },
+            { name: 'Intent Enhancer', description: 'Analyze intent', tags: ['intent', 'communication'] },
+            { name: 'Knowledge Brain', description: 'Remember facts', tags: ['brain', 'memory'] },
+            { name: 'Document Upload', description: 'Upload and analyze files', tags: ['upload', 'document'] },
+            { name: 'Voice I/O', description: 'Speak and hear responses', tags: ['voice', 'speech'] },
+            { name: 'Web Search', description: 'Search the web', tags: ['search', 'web', 'news'] },
+            { name: 'Translation', description: 'Translate languages', tags: ['translate', 'language'] },
+            { name: 'Settings', description: 'Configure the app', tags: ['settings', 'config'] },
+            { name: 'Workspace Files', description: 'Manage files', tags: ['files', 'workspace'] },
+          ],
+        },
+      },
     ];
 
     await db.transaction(async () => {

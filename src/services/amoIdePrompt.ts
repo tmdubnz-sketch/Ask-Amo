@@ -197,6 +197,8 @@ export function isIdeIntent(userInput: string): boolean {
 
 export function extractToolCalls(text: string): IdeToolCall[] {
   const calls: IdeToolCall[] = [];
+
+  // Try exact delimiters first: <<<TOOL>>>...<<<END>>>
   const regex = new RegExp(
     `${escapeRegex(TOOL_CALL_OPEN)}\\s*([\\s\\S]*?)\\s*${escapeRegex(TOOL_CALL_CLOSE)}`,
     'g'
@@ -211,6 +213,22 @@ export function extractToolCalls(text: string): IdeToolCall[] {
       }
     } catch (e) {
       console.warn('[AmoIDE] Failed to parse tool call:', match[1], e);
+    }
+  }
+
+  // Fallback: look for JSON tool calls without delimiters (e.g., {"tool":"write",...})
+  if (calls.length === 0) {
+    const jsonToolRegex = /\{[\s]*"tool"[\s]*:[\s]*"[^"]+"[\s]*,[\s\S]*?\}/g;
+    let jsonMatch: RegExpExecArray | null;
+    while ((jsonMatch = jsonToolRegex.exec(text)) !== null) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed && typeof parsed.tool === 'string' && ['run', 'write', 'read', 'list', 'preview', 'install', 'search', 'open_url'].includes(parsed.tool)) {
+          calls.push(parsed as IdeToolCall);
+        }
+      } catch (e) {
+        // Not valid JSON, skip
+      }
     }
   }
 

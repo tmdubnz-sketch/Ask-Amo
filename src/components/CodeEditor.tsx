@@ -21,7 +21,9 @@ import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { terminalService } from '../services/terminalService';
-import { runCode, runPython } from '../utils/codeRunner';
+import { executeCode } from '../utils/codeExecutor';
+import { CodePreview } from './CodePreview';
+import { FileTree, getLanguageFromPath } from './FileTree';
 import { cn } from '../lib/utils';
 
 // Get the workspace path for running files
@@ -175,6 +177,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const [isRunning, setIsRunning] = useState(false);
   const [runOutput, setRunOutput] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [showFileTree, setShowFileTree] = useState(false);
   const [prompt, setPrompt] = useState('');
   const editorParentRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -304,90 +307,22 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     setIsRunning(true);
     setRunOutput('');
     
-    let outputText = '';
-    
     try {
-      // Use QuickJS for JavaScript/TypeScript (browser sandbox - no Node.js needed)
-      if (language === 'javascript' || language === 'typescript') {
-        const result = await runCode(code);
-        if (result.error) {
-          outputText = `Error: ${result.error}`;
-        } else {
-          outputText = result.output.join('\n') || 'Done.';
-        }
-        setRunOutput(outputText);
-        setIsRunning(false);
-        if (onOutputCapture) onOutputCapture(outputText);
-        return;
+      const result = await executeCode(code, language);
+      
+      let output = `[${result.method}] `;
+      if (result.error) {
+        output += `Error: ${result.error}`;
+      } else {
+        output += result.output || 'Done.';
       }
       
-      // Use Pyodide for Python (browser sandbox - no Python install needed)
-      if (language === 'python') {
-        const result = await runPython(code);
-        if (result.error) {
-          outputText = `Error: ${result.error}`;
-        } else {
-          outputText = result.output.join('\n') || 'Done.';
-        }
-        setRunOutput(outputText);
-        setIsRunning(false);
-        if (onOutputCapture) onOutputCapture(outputText);
-        return;
-      }
-
-      // For all other languages, use terminal (requires tools installed on device)
-      const workspacePath = getWorkspacePath();
-      let command: string;
-      
-      if (language === 'shell') {
-        command = `cd "${workspacePath}" && echo '${code.replace(/'/g, "'\\''")}' | bash`;
-      } else {
-        const cmd = LANGUAGE_COMMANDS[language];
-        if (cmd) {
-          const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const fullPath = `${workspacePath}/${safeName}`;
-          
-          // Create workspace dir and write file
-          await terminalService.exec({
-            command: `mkdir -p "${workspacePath}"`,
-            sessionId: sessionIdRef.current,
-            timeoutMs: 5000,
-          });
-          
-          await terminalService.exec({
-            command: `cat > '${fullPath}' << 'EOFAMO'\n${code}\nEOFAMO`,
-            sessionId: sessionIdRef.current,
-            timeoutMs: 5000,
-          });
-          
-          // Run from workspace directory
-          command = `cd "${workspacePath}" && ${cmd} "${safeName}"`;
-        } else {
-          outputText = `Run not available for ${LANGUAGE_LABELS[language]}.\nSupported browserside: JavaScript, TypeScript, Python.\nOther languages need tools installed on device.`;
-          setRunOutput(outputText);
-          setIsRunning(false);
-          if (onOutputCapture) onOutputCapture(outputText);
-          return;
-        }
-      }
-
-      const result = await terminalService.exec({
-        command,
-        sessionId: sessionIdRef.current,
-        timeoutMs: 30000,
-      });
-
-      if (result.output.includes('command not found') || result.output.includes('not found')) {
-        outputText = `${result.output}\n\nTip: Use the install tool to add dependencies:\n{"tool":"install","manager":"apt","packages":["python3"]}`;
-      } else {
-        outputText = result.output || (result.exitCode === 0 ? 'Done.' : `[exit ${result.exitCode}]`);
-      }
-      setRunOutput(outputText);
-      if (onOutputCapture) onOutputCapture(outputText);
+      setRunOutput(output);
+      if (onOutputCapture) onOutputCapture(result.output || result.error || '');
     } catch (error) {
-      outputText = error instanceof Error ? error.message : 'Run failed';
-      setRunOutput(outputText);
-      if (onOutputCapture) onOutputCapture(outputText);
+      const errorMsg = error instanceof Error ? error.message : 'Run failed';
+      setRunOutput(errorMsg);
+      if (onOutputCapture) onOutputCapture(errorMsg);
     } finally {
       setIsRunning(false);
     }
@@ -437,6 +372,19 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         </div>
 
         <div className="flex items-center gap-2 ml-auto">
+          <button
+            onClick={() => setShowFileTree(!showFileTree)}
+            className={cn(
+              "p-2 rounded-lg border transition-all",
+              showFileTree 
+                ? "bg-[#ff4e00]/20 border-[#ff4e00]/30 text-[#ff4e00]"
+                : "glass-panel border-white/10 text-white/60 hover:text-white hover:border-white/20"
+            )}
+            title="Toggle file tree"
+          >
+            <FolderOpen className="w-4 h-4" />
+          </button>
+
           <button
             onClick={handleCopy}
             className="p-2 rounded-lg glass-panel border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all"

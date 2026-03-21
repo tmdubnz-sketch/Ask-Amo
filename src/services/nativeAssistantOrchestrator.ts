@@ -1,5 +1,6 @@
 import type { NativeOfflineStatus } from './nativeOfflineLlmService';
 import type { NativeSessionMessage } from './nativeChatSessionService';
+import { AMO_FEATURES, AMO_COMMANDS, AMO_IDENTITY } from '../data/amoSingleSource';
 
 // ── LIMITS ────────────────────────────────────────────────────────────────────
 // Tuned for Phi-3.5 Mini / 3B+ on Snapdragon 865
@@ -40,98 +41,30 @@ function detectResponseLength(userInput: string): 'short' | 'full' {
 }
 
 // ── COMPREHENSIVE FEATURE GUIDE ─────────────────────────────────────────────────
-// Complete list of Amo's features for the native model to understand and explain
+// Generated from amoSingleSource.ts — the single source of truth
 
 const AMO_FEATURES_GUIDE = `
 [COMPLETE FEATURE GUIDE — explain any feature when asked]
 
-CHAT & COMMUNICATION:
-• General Chat: Ask anything, get answers, have conversations
-• Voice Input: Tap microphone to speak your message
-• Voice Output: Amo speaks responses aloud (toggle in settings)
-• Translation: "translate [text] to [language]"
-• Deep Think: Toggle for more thorough reasoning on complex topics
-
-WEB & SEARCH:
-• Web Search: Cloud models search automatically. Native models use the web search toggle.
-• Web Browser: Open URLs, read web pages, extract information
-• URL Knowledge Import: Paste URLs to import web content into knowledge base
-
-FILES & WORKSPACE:
-• File Upload: Upload PDF, text, images for analysis
-• Document Parsing: Extract and understand uploaded documents
-• Workspace: Create, edit, list, delete files
-• Code Editor: Full code editing with syntax highlighting — USE THIS for code generation
-• Terminal: Run shell commands (ls, cat, mkdir, etc.)
-• @file Reference: Use @file:path to reference files in chat
-
-KNOWLEDGE & MEMORY:
-• Knowledge Brain: Amo remembers conversations, facts, summaries
-• Learn Command: "learn this: [information]" stores permanent knowledge
-• Forget Command: "forget about [topic]" removes knowledge
-• Query Knowledge: "what do you know about [topic]"
-• Document Indexing: Uploaded docs are indexed for search
-• Seed Packs: Pre-loaded knowledge packs for quick start
-
-BUILDER TOOLS:
-• Vocabulary Builder: Extract words, manage vocabulary sets
-• Sentence Builder: Generate sentence variations from templates
-• Intent Enhancer: Analyse and optimize communication intent
-• Builder Bridge: All builder state is injected into prompts
-
-MODELS:
-• Cloud Models: Groq, OpenAI, Gemini, Mistral, OpenRouter (require API keys)
-• Native Models: Local GGUF models run on device (offline capable)
-• WebLLM: Browser-based models using WebGPU
-• Model Switching: Switch between models in settings
-
-SETTINGS & CONFIG:
-• API Keys: Enter provider keys in Settings > Models
-• Voice Settings: Choose voice, speed, personality
-• Theme: Dark theme with glass panels
-• Workspace Root: Set where files are stored
+${AMO_FEATURES.map(f => `• ${f.name}: ${f.description}\n  Say "${f.examples[0]}" to use it`).join('\n\n')}
 
 COMMANDS:
-• /help or "help": Show available commands
-• /clear: Clear current chat
-• "show workspace status": Display workspace info
-• "show imported knowledge": List uploaded documents
-• "show offline models": Display native model status
-• "show brain status": Show memory and knowledge stats
-• "learn this: [info]": Store permanent knowledge
-• "forget about [topic]": Remove knowledge about topic
-• "what do you know about [topic]": Query stored knowledge
+${AMO_COMMANDS.map(c => `• "${c.trigger}" — ${c.description}`).join('\n')}
 
-TIPS:
-• Upload documents to build your knowledge base
-• Use cloud models for complex reasoning tasks
-• Use native models for offline/private conversations
-• Toggle web search for native models to get current info
-• Use @file: syntax to reference specific files
-• Deep think mode helps with complex problems
+IMPORTANT INSTRUCTIONS:
+• You are ${AMO_IDENTITY.name} from ${AMO_IDENTITY.origin}
+• ${AMO_IDENTITY.persona} persona
+• When users ask what you can do, list features from the guide above
+• Never make things up — use the guide as reference
+• Suggest tips when natural, but don't force them
 `.trim();
 
 // ── RANDOM ADVICE & HINTS ──────────────────────────────────────────────────────
-// Amo can randomly suggest these tips to help users
 
-const AMO_RANDOM_TIPS = [
-  'Tip: You can upload PDFs and I will extract and remember the content.',
-  'Tip: Use "learn this: [fact]" to teach me something permanently.',
-  'Tip: Toggle Deep Think for complex questions that need reasoning.',
-  'Tip: You can ask me to explain any feature — just say "what can you do?"',
-  'Tip: Use @file:path to reference specific files in your message.',
-  'Tip: Native models work offline — great for private conversations.',
-  'Tip: Upload documents to build your personal knowledge base.',
-  'Tip: Say "show brain status" to see what I remember.',
-  'Tip: Use the terminal to run shell commands directly.',
-  'Tip: You can translate text by asking "translate [text] to [language]".',
-  'Tip: Toggle voice mode to hear me speak responses aloud.',
-  'Tip: Use cloud models for complex reasoning — they are more capable.',
-  'Tip: Say "forget about [topic]" to remove something from my memory.',
-  'Tip: The sentence builder can generate many variations from templates.',
-  'Tip: Check Settings to configure API keys for cloud models.',
-  'Tip: When I generate code, I save it to the Code Editor. Say "show me the code in chat" to see it inline.',
-];
+const AMO_RANDOM_TIPS = AMO_FEATURES
+  .filter(f => f.examples.length > 0)
+  .map(f => `Tip: ${f.howToUse}`)
+  .slice(0, 15);
 
 function getRandomTip(): string {
   return AMO_RANDOM_TIPS[Math.floor(Math.random() * AMO_RANDOM_TIPS.length)];

@@ -5,6 +5,7 @@ import { webViewBridgeService } from './webViewBridgeService';
 import { sentenceBuilderService } from './sentenceBuilderService';
 import { vocabularyService } from './vocabularyService';
 import { intentEnhancementService } from './intentEnhancementService';
+import { validateToolCall } from '../utils/securityUtils';
 import {
   extractToolCalls,
   stripToolCalls,
@@ -36,6 +37,16 @@ async function executeTool(
   call: IdeToolCall,
   chatId: string,
 ): Promise<DispatchResult> {
+  // Validate tool call before execution
+  const validation = validateToolCall(call);
+  if (!validation.valid) {
+    return {
+      toolCall: call,
+      result: `Blocked: ${validation.reason}`,
+      success: false,
+    };
+  }
+
   switch (call.tool) {
     case 'run': {
       const result = await terminalBridgeService.run(call.command, chatId, {

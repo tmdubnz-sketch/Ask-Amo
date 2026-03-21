@@ -1,32 +1,70 @@
 import { nativeAssistantOrchestrator } from './nativeAssistantOrchestrator';
 import { nativeChatSessionService } from './nativeChatSessionService';
 import type { NativeOfflineStatus } from './nativeOfflineLlmService';
+import { AMO_INSTANT_REPLIES, type InstantReply } from '../data/amoInstantReplies';
 
-// Deterministic replies for instant responses to common queries
-function buildDeterministicReply(userInput: string): string | null {
+// ── INSTANT REPLY ENGINE ──────────────────────────────────────────────────────
+// Handles common queries instantly without model inference.
+// Uses data from amoInstantReplies seed pack.
+
+// Convert string patterns to RegExp for matching
+const compiledReplies: { reply: InstantReply; patterns: RegExp[] }[] = AMO_INSTANT_REPLIES.map(r => ({
+  reply: r,
+  patterns: r.patterns.map(p => new RegExp(p, 'i')),
+}));
+
+function matchIntent(userInput: string): InstantReply | null {
+  const normalized = userInput.replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+
+  for (const { reply, patterns } of compiledReplies) {
+    for (const pattern of patterns) {
+      if (pattern.test(normalized)) {
+        return reply;
+      }
+    }
+  }
+  return null;
+}
+
+function needsClarification(userInput: string): string | null {
   const normalized = userInput.replace(/\s+/g, ' ').trim().toLowerCase();
-  if (!normalized) {
-    return null;
+  
+  // Very short ambiguous inputs
+  if (normalized.length < 4 && !/^(hi|hey|yo|ok|no|yes)$/i.test(normalized)) {
+    return "What would you like me to do?";
   }
 
-  if (/^(hi|hey|hello|hey bro|kia ora|kiaora|yo|sup|what'?s up)[!.?]*$/i.test(normalized)) {
-    return 'Kia ora. How can I help you?';
-  }
-
-  if (/^(who are you|what are you|introduce yourself|tell me about yourself)[?.!]*$/i.test(normalized)) {
-    return "I'm Amo. I can help with chat, imported knowledge, and offline tools on this device.";
-  }
-
-  if (/^(thanks|thank you|cheers)[!.?]*$/i.test(normalized)) {
-    return "You're welcome.";
-  }
-
-  if (/^(help|help me|can you help|can u help|do you help|what can you do|what can you do offline)[?.!]*$/i.test(normalized)) {
-    return 'I can chat, speak, show offline status, show workspace status, and work with imported knowledge on this device.';
+  // Just an action word without context
+  if (/^(do|run|make|create|fix|check|show|open|start)$/i.test(normalized)) {
+    return `${normalized.charAt(0).toUpperCase() + normalized.slice(1)} what?`;
   }
 
   return null;
 }
+
+// ── MAIN DETERMINISTIC REPLY FUNCTION ────────────────────────────────────────
+
+function buildDeterministicReply(userInput: string): { reply: string; actions?: string[] } | null {
+  const normalized = userInput.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!normalized) return null;
+
+  // Check for clarification first
+  const clarification = needsClarification(normalized);
+  if (clarification) {
+    return { reply: clarification };
+  }
+
+  // Check for intent match using seed pack data
+  const match = matchIntent(normalized);
+  if (match) {
+    return { reply: match.reply, actions: match.actions };
+  }
+
+  return null;
+}
+
+// ── TIMEOUT HELPER ───────────────────────────────────────────────────────────
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   let timeoutId: number | undefined;
@@ -46,6 +84,8 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
+// ── EXPORTS ──────────────────────────────────────────────────────────────────
+
 export interface NativeReplyLifecycleResult {
   text: string;
   status: NativeOfflineStatus | null;
@@ -54,7 +94,7 @@ export interface NativeReplyLifecycleResult {
 export { buildDeterministicReply };
 
 export const nativeReplyCoordinator = {
-    async generateAndCommit(options: {
+  async generateAndCommit(options: {
     chatId: string;
     userInput: string;
     knowledgeContext?: string;

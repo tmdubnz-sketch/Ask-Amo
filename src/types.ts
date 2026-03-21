@@ -109,7 +109,7 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
   },
   {
     id: "amo-native-offline",
-    name: "Native offline",
+    name: "Phi-3.5 Mini",
     description: "Phi-3.5 Mini 3.8B Q4_K_M — optimized for mobile. Strong reasoning, instruction following, and code. Runs fully offline with no internet needed.",
     size: "2.4GB",
     family: 'native',

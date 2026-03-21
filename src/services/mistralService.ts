@@ -21,6 +21,9 @@ export class MistralService {
 
     const systemPrompt = buildAssistantSystemPrompt(botName, context, options);
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
     const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -40,7 +43,8 @@ export class MistralService {
         max_tokens: options?.deepThink ? 1024 : 512,
         stream: true,
       }),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

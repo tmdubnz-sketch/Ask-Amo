@@ -2,6 +2,8 @@ import { Capacitor } from '@capacitor/core';
 import { AMO_STARTER_PACKS } from '../data/amoStarterPacks';
 import { CURATED_KNOWLEDGE_PACKS } from '../data/curatedKnowledge';
 import { AMO_SELF_KNOWLEDGE } from '../data/amoSelfKnowledge';
+import { AMO_INSTANT_REPLIES } from '../data/amoInstantReplies';
+import { AMO_SEED_PACKS } from '../data/amoSingleSource';
 import { buildHelpKnowledgeChunks } from '../data/amoHelpData';
 import { vectorDbService } from './vectorDbService';
 import { knowledgeStoreService } from './knowledgeStoreService';
@@ -92,6 +94,55 @@ async function bootstrapHelpKnowledge(): Promise<void> {
   }
 }
 
+async function bootstrapInstantReplies(): Promise<void> {
+  const existingDocs = await knowledgeStoreService.listDocuments();
+
+  for (const reply of AMO_INSTANT_REPLIES) {
+    const existingDoc = existingDocs.find(doc => doc.document_id === `instant-reply:${reply.id}`);
+    if (existingDoc) continue;
+
+    await knowledgeStoreService.upsertChunk({
+      id: `instant-reply:${reply.id}`,
+      documentId: 'instant-replies',
+      documentName: 'Instant Replies',
+      content: `Intent: ${reply.id}\nPatterns: ${reply.patterns.join(' | ')}\nReply: ${reply.reply}\nActions: ${reply.actions?.join(', ') || 'none'}\nTags: ${reply.tags.join(', ')}`,
+      embedding: new Array(1536).fill(0),
+      metadata: {
+        assetKind: 'instant-reply',
+        source: 'system',
+        replyId: reply.id,
+        actions: reply.actions || [],
+        tags: reply.tags,
+      },
+    });
+    console.info(`[AskAmo] Bootstrapped instant reply: ${reply.id}`);
+  }
+}
+
+async function bootstrapSingleSource(): Promise<void> {
+  const existingDocs = await knowledgeStoreService.listDocuments();
+
+  for (const chunk of AMO_SEED_PACKS) {
+    const existingDoc = existingDocs.find(doc => doc.document_id === chunk.id);
+    if (existingDoc) continue;
+
+    await knowledgeStoreService.upsertChunk({
+      id: chunk.id,
+      documentId: chunk.documentId,
+      documentName: chunk.documentName,
+      content: `${chunk.documentName}\nTags: ${chunk.tags.join(', ')}\nType: ${chunk.kind}\n\n${chunk.content}`,
+      embedding: new Array(1536).fill(0),
+      metadata: {
+        assetKind: 'single-source',
+        source: 'system',
+        chunkKind: chunk.kind,
+        tags: chunk.tags,
+      },
+    });
+    console.info(`[AskAmo] Bootstrapped single-source: ${chunk.id}`);
+  }
+}
+
 export const knowledgeBootstrapService = {
   async bootstrapAmoBrain(): Promise<void> {
     console.info('[Bootstrap] Starting brain population...');
@@ -176,6 +227,20 @@ export const knowledgeBootstrapService = {
       console.info('[Bootstrap] Starter pack content seeded');
     } catch (e) {
       console.error('[Bootstrap] Starter pack content failed:', e);
+    }
+
+    try {
+      await bootstrapInstantReplies();
+      console.info('[Bootstrap] Instant replies seeded');
+    } catch (e) {
+      console.error('[Bootstrap] Instant replies failed:', e);
+    }
+
+    try {
+      await bootstrapSingleSource();
+      console.info('[Bootstrap] Single source of truth seeded');
+    } catch (e) {
+      console.error('[Bootstrap] Single source failed:', e);
     }
 
     // Superbrain packs are already seeded during knowledgeStoreService.init()

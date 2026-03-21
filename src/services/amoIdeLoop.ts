@@ -2,6 +2,7 @@ import { amoIdeDispatcher } from './amoIdeDispatcher';
 import { extractToolCalls, stripToolCalls, buildIdeSystemPrompt, type IdeContext } from './amoIdePrompt';
 import { terminalBridgeService } from './terminalBridgeService';
 import { workspaceWriteService } from './workspaceWriteService';
+import { sanitizeFilePath } from '../utils/securityUtils';
 
 const MAX_ITERATIONS = 6;
 const MAX_TOOL_CONTEXT = 3000;
@@ -207,7 +208,12 @@ export async function runIdeLoop(options: IdeLoopOptions): Promise<IdeLoopResult
 }
 
 async function readFileForPreview(path: string, chatId: string): Promise<string> {
-  const result = await terminalBridgeService.run(`cat "${path}"`, chatId);
+  const { valid, sanitized, reason } = sanitizeFilePath(path);
+  if (!valid) {
+    console.warn('[IDE Loop] Blocked file read:', reason);
+    return '';
+  }
+  const result = await terminalBridgeService.run(`cat "${sanitized}"`, chatId);
   return result.success ? result.output : '';
 }
 

@@ -33,6 +33,10 @@ export class GroqService {
       max_tokens: deepThink ? 768 : 384,
     };
 
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -40,7 +44,8 @@ export class GroqService {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

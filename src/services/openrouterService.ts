@@ -25,6 +25,9 @@ export class OpenRouterService {
       content: buildAssistantSystemPrompt(botName, context, options),
     };
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -40,7 +43,8 @@ export class OpenRouterService {
         temperature: deepThink ? 0.2 : 0.3,
         max_tokens: deepThink ? 640 : 256,
       }),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

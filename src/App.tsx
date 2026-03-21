@@ -510,6 +510,7 @@ export default function App({ ready = true }: AppProps) {
   const [nativeDownloadUrl, setNativeDownloadUrl] = useState<string>(RECOMMENDED_NATIVE_DOWNLOADS[0].url);
   const [nativeDownloadAuthStatus, setNativeDownloadAuthStatus] = useState<NativeOfflineDownloadAuthStatus | null>(null);
   const [isDownloadingNativeModel, setIsDownloadingNativeModel] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ percent: number; status: string } | null>(null);
   
   const [nativeOfflineStatus, setNativeOfflineStatus] = useState<NativeOfflineStatus | null>(null);
   const [nativeTtsStatus, setNativeTtsStatus] = useState<NativeTtsStatus | null>(null);
@@ -1756,8 +1757,14 @@ export default function App({ ready = true }: AppProps) {
   };
 
    const handleSend = async () => {
-     if (!inputRef.current.trim() || isLoading) return;
-     const routedIntent = routeUserIntent(inputRef.current);
+      if (!inputRef.current.trim() || isLoading) return;
+      
+      // Cancel any ongoing speech when user sends a new message
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      
+      const routedIntent = routeUserIntent(inputRef.current);
      let userPrompt = routedIntent.canonicalInput || inputRef.current;
      
      // Inject @file and @workspace context
@@ -1944,19 +1951,39 @@ export default function App({ ready = true }: AppProps) {
       }
 
       // Check for deterministic replies first to avoid unnecessary processing
-      const deterministicReply = buildDeterministicReply(userPrompt);
-      if (deterministicReply !== null) {
-       addMessage('user', userPrompt, pendingImage || undefined);
-       const assistantId = addStreamingMessage('assistant');
-       activeAssistantMessageIdRef.current = assistantId;
-        updateMessage(assistantId, deterministicReply, false);
-         finalizeMessage(assistantId);
-         await persistExchangeToBrain(userPrompt, deterministicReply);
-         if (isVoiceModeRef.current) speak(deterministicReply);
+      const deterministic = buildDeterministicReply(userPrompt);
+      if (deterministic !== null) {
+        addMessage('user', userPrompt, pendingImage || undefined);
+        const assistantId = addStreamingMessage('assistant');
+        activeAssistantMessageIdRef.current = assistantId;
+        updateMessage(assistantId, deterministic.reply, false);
+        finalizeMessage(assistantId);
+        await persistExchangeToBrain(userPrompt, deterministic.reply);
+        if (isVoiceModeRef.current) speak(deterministic.reply);
+
+        // Execute instant actions
+        if (deterministic.actions) {
+          for (const action of deterministic.actions) {
+            switch (action) {
+              case 'switch_to_terminal': setActiveView('terminal'); break;
+              case 'switch_to_editor': setActiveView('editor'); break;
+              case 'switch_to_webview': setActiveView('webview'); break;
+              case 'switch_to_vocabulary': setActiveView('vocabulary'); break;
+              case 'switch_to_sentence_builder': setActiveView('sentence-builder'); break;
+              case 'switch_to_intent_enhancer': setActiveView('intent-enhancer'); break;
+              case 'switch_to_settings': setIsSettingsOpen(true); break;
+              case 'list_files': handleRunQuickCommand('ls -la'); break;
+              case 'show_brain_status': handleRunQuickCommand('show brain status'); break;
+              case 'enable_voice': setIsVoiceMode(true); break;
+              case 'clear_chat': clearChat(); break;
+            }
+          }
+        }
+
         setIsLoading(false);
         setAmoRuntimeState('waiting');
-       return;
-     }
+        return;
+      }
      
       addMessage('user', userPrompt, pendingImage || undefined);
       const assistantId = addStreamingMessage('assistant');
@@ -1998,11 +2025,33 @@ export default function App({ ready = true }: AppProps) {
              if (pendingImage && runtimeModel.isVision) {
                userMessage.image = pendingImage;
              }
-             const cloudMessages = [...history, userMessage];
-             const handleCloudUpdate = (text: string) => {
-               if (isRequestCanceled(requestId)) return;
-               updateMessage(assistantId, text, true);
-             };
+              const cloudMessages = [...history, userMessage];
+              
+              // Streaming speech: speak sentences as they complete
+              let speechBuffer = '';
+              let lastSpokenLength = 0;
+              
+              const handleCloudUpdate = (text: string) => {
+                if (isRequestCanceled(requestId)) return;
+                updateMessage(assistantId, text, true);
+                
+                // Streaming speech - speak complete sentences as they arrive
+                if (isVoiceModeRef.current && text.length > lastSpokenLength) {
+                  const newText = text.slice(lastSpokenLength);
+                  speechBuffer += newText;
+                  lastSpokenLength = text.length;
+                  
+                  // Check for sentence boundaries
+                  const sentenceMatch = speechBuffer.match(/^(.+?[.!?]+)\s*/);
+                  if (sentenceMatch) {
+                    const sentence = sentenceMatch[1].trim();
+                    if (sentence.length > 5) {
+                      speak(sentence);
+                    }
+                    speechBuffer = speechBuffer.slice(sentenceMatch[0].length);
+                  }
+                }
+              };
 
             switch (runtimeModel.family) {
               case 'groq':
@@ -2046,31 +2095,34 @@ export default function App({ ready = true }: AppProps) {
             updateMessage(assistantId, reply, false);
             finalizeMessage(assistantId);
             await persistExchangeToBrain(userPrompt, reply);
-            if (isVoiceModeRef.current) { speak(reply); } else { console.log('[Voice] Voice mode off, not speaking'); }
+            
+            // Speak any remaining text that wasn't spoken during streaming
+            if (isVoiceModeRef.current) {
+              if (speechBuffer.trim().length > 5) {
+                speak(speechBuffer.trim());
+              }
+              // Also speak the full final response if nothing was spoken during streaming
+              if (lastSpokenLength === 0) {
+                speak(reply);
+              }
+            }
           } else {
-            // Native offline model — use orchestrator for CoT, few-shot, feature guide, bad-response fallback
-            const session = history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
-            const knowledgeContext = bundle.combinedContext || undefined;
+            // Native offline model (llama.cpp via Android JNI)
+            const systemPrompt = bundle.combinedContext
+              ? `You are Amo, a helpful AI assistant.\n\n${bundle.combinedContext}`
+              : 'You are Amo, a helpful AI assistant.';
+            const historyText = history.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Amo'}: ${m.content}`).join('\n');
+            const prompt = `${systemPrompt}\n\n${historyText}\nUser: ${userPrompt}${visionPromptSuffix}\nAmo:`;
             
             try {
               const params = useModelSettingsStore.getState();
-              const result = await nativeAssistantOrchestrator.generateReply({
-                userInput: userPrompt + visionPromptSuffix,
-                session,
-                knowledgeContext,
-                webContext: webSearchContext,
-                runPrompt: async (prompt, timeoutMessage) => {
-                  const res = await nativeOfflineLlmService.generate({
-                    prompt,
-                    temperature: params.temperature,
-                    top_p: params.topP,
-                    max_tokens: params.maxTokens,
-                  });
-                  return { text: res?.text?.trim() || '', status: null };
-                },
+              const nativeResult = await nativeOfflineLlmService.generate({
+                prompt,
+                temperature: params.temperature,
+                top_p: params.topP,
+                max_tokens: params.maxTokens,
               });
-              
-              reply = result.text;
+              reply = nativeResult?.text?.trim() || 'No response from native model.';
               
               // Process code blocks - save substantial code to editor instead of chat
               const processedNative = await processCodeBlocks(reply, userPrompt);
@@ -2763,58 +2815,70 @@ export default function App({ ready = true }: AppProps) {
             return modelIdMap[filename] || filename;
           })}
           onSelectNativeModel={undefined}
-           onDownloadModel={async (model) => {
-             setIsDownloadingNativeModel(true);
-             setDownloadStatus(`Downloading ${model.name}...`);
-             try {
-               await nativeOfflineLlmService.prepareRuntime();
-               
-               // Check if this is a vision model with mmproj
-               const modelWithMmproj = model as any;
-               if (modelWithMmproj.mmprojUrl) {
-                 // Download main model file
-                 const mainResult = await nativeOfflineLlmService.downloadModel({
-                   sourceUrl: modelWithMmproj.url,
-                   displayName: modelWithMmproj.name + "-main",
-                   activate: false, // Don't activate yet, wait for mmproj
-                 });
-                 
-                 if (!mainResult) {
-                   throw new Error('Failed to download main model file');
-                 }
-                 
-                 // Download mmproj file
-                 const mmprojResult = await nativeOfflineLlmService.downloadModel({
-                   sourceUrl: modelWithMmproj.mmprojUrl,
-                   displayName: modelWithMmproj.name + "-mmproj",
-                   activate: false,
-                 });
-                 
-                 if (!mmprojResult) {
-                   throw new Error('Failed to download mmproj file');
-                 }
-                 
-                 // Set the main model as active (the mmproj will be referenced internally)
-                 await nativeOfflineLlmService.setActiveModel({ 
-                   relativePath: mainResult.importedModel.relativePath,
-                   // We'd need to pass mmproj path to native service, but for now
-                   // we'll rely on naming convention or extend the service later
-                 });
-                 
-                 setNativeOfflineStatus(mainResult.status);
-                 setDownloadStatus(`Downloaded ${model.name} with vision support!`);
-                 // Refresh model list to make the downloaded model available in dropdown
-                 const { loadLocalModels } = await import('./stores/modelSettingsStore');
-                 await loadLocalModels();
-               } else {
-                 // Regular model download
-                 const result = await nativeOfflineLlmService.downloadModel({
-                   sourceUrl: model.url,
-                   displayName: model.name,
-                   activate: true,
-                 });
+            onDownloadModel={async (model) => {
+              setIsDownloadingNativeModel(true);
+              setDownloadProgress({ percent: 0, status: 'Preparing...' });
+              setDownloadStatus(`Downloading ${model.name}...`);
+              try {
+                setDownloadProgress({ percent: 10, status: 'Initializing runtime...' });
+                await nativeOfflineLlmService.prepareRuntime();
+                
+                setDownloadProgress({ percent: 20, status: `Downloading ${model.name}...` });
+                
+                // Check if this is a vision model with mmproj
+                const modelWithMmproj = model as any;
+                if (modelWithMmproj.mmprojUrl) {
+                  // Download main model file
+                  const mainResult = await nativeOfflineLlmService.downloadModel({
+                    sourceUrl: modelWithMmproj.url,
+                    displayName: modelWithMmproj.name + "-main",
+                    activate: false, // Don't activate yet, wait for mmproj
+                  });
+                  
+                  if (!mainResult) {
+                    throw new Error('Failed to download main model file');
+                  }
+                  
+                  setDownloadProgress({ percent: 60, status: 'Downloading vision model...' });
+                  
+                  // Download mmproj file
+                  const mmprojResult = await nativeOfflineLlmService.downloadModel({
+                    sourceUrl: modelWithMmproj.mmprojUrl,
+                    displayName: modelWithMmproj.name + "-mmproj",
+                    activate: false,
+                  });
+                  
+                  if (!mmprojResult) {
+                    throw new Error('Failed to download mmproj file');
+                  }
+                  
+                  setDownloadProgress({ percent: 90, status: 'Activating model...' });
+                  
+                  // Set the main model as active (the mmproj will be referenced internally)
+                  await nativeOfflineLlmService.setActiveModel({ 
+                    relativePath: mainResult.importedModel.relativePath,
+                    // We'd need to pass mmproj path to native service, but for now
+                    // we'll rely on naming convention or extend the service later
+                  });
+                  
+                  setNativeOfflineStatus(mainResult.status);
+                  setDownloadProgress({ percent: 100, status: 'Download complete!' });
+                  setDownloadStatus(`Downloaded ${model.name} with vision support!`);
+                  // Refresh model list to make the downloaded model available in dropdown
+                  const { loadLocalModels } = await import('./stores/modelSettingsStore');
+                  await loadLocalModels();
+                } else {
+                  // Regular model download
+                  setDownloadProgress({ percent: 30, status: 'Downloading model...' });
+                  const result = await nativeOfflineLlmService.downloadModel({
+                    sourceUrl: model.url,
+                    displayName: model.name,
+                    activate: true,
+                  });
                  if (result) {
+                   setDownloadProgress({ percent: 90, status: 'Activating model...' });
                    setNativeOfflineStatus(result.status);
+                   setDownloadProgress({ percent: 100, status: 'Download complete!' });
                    setDownloadStatus(`Downloaded ${model.name}!`);
                    // Refresh model list to make the downloaded model available in dropdown
                    const { loadLocalModels } = await import('./stores/modelSettingsStore');
@@ -2822,11 +2886,13 @@ export default function App({ ready = true }: AppProps) {
                  }
                }
              } catch (e: any) {
-               setError(e.message);
-             } finally {
-               setIsDownloadingNativeModel(false);
-             }
-           }}
+                setError(e.message);
+              } finally {
+                setIsDownloadingNativeModel(false);
+                // Keep progress visible for 2 seconds then clear
+                setTimeout(() => setDownloadProgress(null), 2000);
+              }
+            }}
           onDeleteModel={async (modelId) => {
             const model = nativeOfflineStatus?.availableModels.find(m => 
               m.displayName.toLowerCase().replace(/\s+/g, '-') === modelId
@@ -2885,12 +2951,30 @@ export default function App({ ready = true }: AppProps) {
                        <span>{error}</span>
                      </div>
                    )}
-                   {downloadStatus && !error && (
-                     <div className="flex items-start gap-3 rounded-2xl border border-[#ff4e00]/20 bg-[#ff4e00]/8 px-4 py-3 text-sm text-white/80">
-                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#ff8a5c]" />
-                       <span>{downloadStatus}</span>
-                     </div>
-                   )}
+                    {downloadStatus && !error && (
+                      <div className="rounded-2xl border border-[#ff4e00]/20 bg-[#ff4e00]/8 px-4 py-3 text-sm text-white/80">
+                        <div className="flex items-start gap-3">
+                          <DownloadCloud className="mt-0.5 h-4 w-4 shrink-0 text-[#ff8a5c] animate-pulse" />
+                          <div className="flex-1">
+                            <span>{downloadProgress?.status || downloadStatus}</span>
+                            {downloadProgress && (
+                              <div className="mt-2">
+                                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-[#ff4e00] rounded-full transition-all duration-500"
+                                    style={{ width: `${downloadProgress.percent}%` }}
+                                  />
+                                </div>
+                                <div className="flex justify-between mt-1 text-[10px] text-white/40">
+                                  <span>{downloadProgress.status}</span>
+                                  <span>{downloadProgress.percent}%</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                  </div>
                )}
 
@@ -2916,22 +3000,28 @@ export default function App({ ready = true }: AppProps) {
               </div>
             )}
 
-{activeView === 'terminal' && (
+            <div className={activeView === 'terminal' ? 'h-full' : 'hidden'}>
               <div className="h-full max-w-4xl mx-auto w-full glass-panel border border-white/10 rounded-[1.75rem] overflow-hidden min-h-[420px] p-2">
                 <Terminal />
               </div>
-            )}
+            </div>
 
-            {activeView === 'editor' && (
+            <div className={activeView === 'editor' ? 'h-full' : 'hidden'}>
               <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
                 <CodeEditor 
                   initialCode={pendingEditorCode?.code} 
                   initialFileName={pendingEditorCode?.filename}
                   autoRun={pendingEditorCode?.autoRun}
                   onOutputCapture={(output) => setAmoTerminalOutput(output)}
+                  onGenerate={(prompt, context) => {
+                    // User requests code generation from within editor
+                    setInput(prompt);
+                    setActiveView('chat');
+                    setTimeout(() => handleSend(), 100);
+                  }}
                 />
               </div>
-            )}
+            </div>
 
             {activeView === 'vocabulary' && (
               <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">

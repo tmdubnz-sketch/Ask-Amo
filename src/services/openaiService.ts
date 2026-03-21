@@ -19,6 +19,9 @@ export class OpenAiService {
       throw new Error('Missing OpenAI API key');
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -37,7 +40,8 @@ export class OpenAiService {
         temperature: options?.deepThink ? 0.2 : 0.3,
         max_tokens: options?.deepThink ? 640 : 256,
       }),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
