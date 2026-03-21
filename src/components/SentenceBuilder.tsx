@@ -47,7 +47,7 @@ export function SentenceBuilder({ onClose }: SentenceBuilderProps) {
   // Generator state
   const [generationRequest, setGenerationRequest] = useState<SentenceGenerationRequest>({
     intent: '',
-    style: 'neutral',
+    style: 'casual',
     complexity: 'moderate',
     length: 'medium'
   });
@@ -758,7 +758,12 @@ function WordTableEditor({ wordTable, onSave, onCancel }: { wordTable: WeightedW
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    const totalWeight = formData.words.reduce((sum, w) => sum + w.weight, 0);
+    onSave({
+      ...formData,
+      totalWeight,
+      lastUpdated: Date.now()
+    });
   };
 
   const addWord = () => {

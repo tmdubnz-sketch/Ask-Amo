@@ -47,6 +47,7 @@ class AudioCaptureService {
   private onError: ErrorCallback | null = null;
   private isRunning = false;
   private finalResultTimer: number | undefined;
+  private continuousMode = false;
 
   isSupported(): boolean {
     return typeof window !== 'undefined' &&
@@ -58,12 +59,24 @@ class AudioCaptureService {
     this.onError = onError || null;
   }
 
+  setContinuousMode(enabled: boolean) {
+    this.continuousMode = enabled;
+    if (this.recognition) {
+      this.recognition.continuous = enabled;
+    }
+  }
+
   async start(): Promise<void> {
     if (!this.isSupported()) {
       this.onError?.('Speech recognition is not supported on this device.');
       return;
     }
-    if (this.isRunning) return;
+    
+    // Reuse existing recognition if already running in continuous mode
+    if (this.isRunning && this.continuousMode && this.recognition) {
+      console.info('[AudioCapture] Already running in continuous mode');
+      return;
+    }
 
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
@@ -78,7 +91,7 @@ class AudioCaptureService {
     }
 
     this.recognition.lang = 'en-NZ';
-    this.recognition.continuous = false;
+    this.recognition.continuous = this.continuousMode;
     this.recognition.interimResults = true;
     this.recognition.maxAlternatives = 1;
 

@@ -418,9 +418,38 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       </div>
 
       <div className="flex-1 flex gap-3 min-h-0">
+        {/* File Tree Panel - shown when toggled */}
+        {showFileTree && (
+          <div className="w-56 flex-shrink-0">
+            <FileTree 
+              onFileSelect={(path, content) => {
+                setCode(content);
+                setFileName(path);
+                const newLang = getLanguageFromPath(path);
+                setLanguage(newLang as CodeLanguage);
+                if (editorViewRef.current) {
+                  editorViewRef.current.dispatch({
+                    changes: { from: 0, to: editorViewRef.current.state.doc.length, insert: content }
+                  });
+                }
+                setShowFileTree(false);
+              }}
+              currentFile={fileName}
+            />
+          </div>
+        )}
+
+        {/* Editor Panel */}
         <div className="flex-1 flex flex-col glass-panel border border-white/10 rounded-2xl overflow-hidden">
           <div className="px-4 py-2 border-b border-white/10 bg-white/5 flex items-center justify-between">
-            <span className="text-xs text-white/40 font-mono">Editor</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/40 font-mono">{fileName || 'untitled'}</span>
+              {showFileTree && (
+                <span className="text-[9px] text-white/20 truncate max-w-[200px]">
+                  {getWorkspacePath()}
+                </span>
+              )}
+            </div>
             <span className="text-xs text-[#ff4e00] font-mono">{LANGUAGE_LABELS[language]}</span>
           </div>
           <div 

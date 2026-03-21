@@ -13,7 +13,7 @@ import {
   BarChart3,
   TrendingUp,
   Hash,
-  Tag,
+  Tag as TagIcon,
   MessageSquare,
   Search,
   Filter,
@@ -222,7 +222,7 @@ export function IntentEnhancer({ onClose }: IntentEnhancerProps) {
         {[
           { id: 'predictor', label: 'Predictor', icon: Target },
           { id: 'keywords', label: 'Keywords', icon: Hash },
-          { id: 'tags', label: 'Tags', icon: Tag },
+          { id: 'tags', label: 'Tags', icon: TagIcon },
           { id: 'patterns', label: 'Patterns', icon: MessageSquare },
           { id: 'analytics', label: 'Analytics', icon: BarChart3 }
         ].map(tab => (
@@ -526,7 +526,7 @@ export function IntentEnhancer({ onClose }: IntentEnhancerProps) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-white/80 flex items-center gap-2">
-                <Tag className="w-3.5 h-3.5" />
+                <TagIcon className="w-3.5 h-3.5" />
                 Intent Tags
               </h3>
               <button

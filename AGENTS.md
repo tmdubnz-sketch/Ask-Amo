@@ -8,6 +8,7 @@
 - No `.cursor/rules/` directory is present.
 - No `.cursorrules` file is present.
 - No `.github/copilot-instructions.md` file is present.
+- 6 agent skills in `.github/skills/`: refactor-helper, boilerplate-gen, tdd-enforcer, auto-debugger, cli-master, doc-search.
 
 **Project Snapshot**
 - React 19 SPA built with Vite 6.
@@ -17,17 +18,30 @@
 - PWA support is configured with `vite-plugin-pwa`.
 - Capacitor Android files are checked in under `android/`.
 - Local AI features use Groq, WebLLM, browser APIs, and lightweight document retrieval.
-- The settings modal currently uses a five-tab top strip and includes in-app provider secret entry, native GGUF download/import controls, and URL-based knowledge import.
+- The settings modal uses a five-tab top strip with in-app provider secret entry, native GGUF download/import controls, and URL-based knowledge import.
 - Amo's persona is neutral and locale-independent — no NZ Maori references.
-- Three superbrain seed packs (core reasoning, builder integration, conversation patterns) are seeded on first DB init.
+- Five superbrain seed packs (core reasoning, builder integration, conversation patterns, instant replies, features guide) are seeded on first DB init.
 - Chain-of-thought reasoning is available for both cloud (deepThink mode) and native GGUF (structured CoT scaffold).
 - Builder bridge injects live vocabulary/sentence/intent state into every prompt context.
+- Code editor with CodeMirror, file tree, syntax highlighting, and in-browser execution (JS via iframe, Python via Pyodide).
+- Welcome guide modal shows on first launch with 8-step onboarding.
 
 **Repo Map**
-- `src/App.tsx`: main app shell, chat orchestration, uploads, voice, and settings UI.
-- `src/components/MessageList.tsx`: threaded message rendering and inline actions.
+- `src/App.tsx`: main app shell, chat orchestration, uploads, voice, settings, code-to-editor flow.
+- `src/components/MessageList.tsx`: threaded message rendering with code block extraction.
+- `src/components/CodeEditor.tsx`: CodeMirror editor with file tree, run button, preview, and AI generation.
+- `src/components/CodePreview.tsx`: sandboxed iframe for HTML/JS preview.
+- `src/components/CodeSnippet.tsx`: inline code display with copy button for chat.
+- `src/components/FileTree.tsx`: workspace file browser with new file creation.
+- `src/components/Terminal.tsx`: xterm.js terminal with command execution and auto-resize.
+- `src/components/WebBrowser.tsx`: external browser integration with content fetch.
+- `src/components/WelcomeGuide.tsx`: first-launch onboarding modal.
 - `src/hooks/useMessages.ts`: message state helper with streaming-safe IDs.
 - `src/services/groqService.ts`: cloud chat + transcription client.
+- `src/services/openaiService.ts`: OpenAI chat client.
+- `src/services/geminiService.ts`: Gemini chat client.
+- `src/services/openrouterService.ts`: OpenRouter chat client.
+- `src/services/mistralService.ts`: Mistral chat client.
 - `src/services/apiKeyStorage.ts`: provider key storage backed by secure native/browser secret storage.
 - `src/services/secretStorageService.ts`: secure persistence abstraction for secrets.
 - `src/services/webLlmService.ts`: offline WebLLM wrapper.
@@ -35,12 +49,30 @@
 - `src/services/vectorDbService.ts`: browser-side embedding store and similarity search.
 - `src/services/sqliteAdapter.ts`: async SQLite adapter layer — `WasmSQLiteAdapter` for browser, `CapacitorSQLiteAdapter` for native Android persistent storage.
 - `src/services/nativeOfflineLlmService.ts`: Android native GGUF runtime bridge, model import, and direct-download APIs.
-- `src/services/audioCaptureService.ts`: microphone capture helpers.
+- `src/services/nativeSpeechRecognitionService.ts`: native Android speech recognition with web fallback.
+- `src/services/audioCaptureService.ts`: legacy microphone capture (replaced by nativeSpeechRecognitionService).
 - `src/services/speechT5Service.ts`: offline/browser speech synthesis helpers.
 - `src/services/builderBridgeService.ts`: unified read-only bridge that exposes vocabulary, sentence builder, and intent enhancer state as a snapshot for prompt injection.
 - `src/services/amoBrainService.ts`: high-level brain API — memory, facts, summaries, seed packs, and builder-aware fast context assembly.
+- `src/services/amoIdeLoop.ts`: agentic IDE loop with tool execution, multi-iteration support.
+- `src/services/amoIdeDispatcher.ts`: tool dispatch for run, write, read, list, preview, install, search, and builder tools.
+- `src/services/amoIdePrompt.ts`: IDE system prompt with tool definitions and examples.
+- `src/services/amoToolCoordinator.ts`: pre-processing coordinator for IDE tasks.
+- `src/services/nativeReplyCoordinator.ts`: instant reply system with pattern matching.
 - `src/services/assistantPrompt.ts`: cloud model system prompt builder with chain-of-thought reasoning.
 - `src/services/nativeAssistantOrchestrator.ts`: native GGUF prompt builder with CoT scaffold and few-shot examples.
+- `src/services/knowledgeBootstrapService.ts`: seeds brain with starter packs, instant replies, and feature guide.
+- `src/services/knowledgeStoreService.ts`: SQLite-based knowledge storage with seed packs.
+- `src/services/browserService.ts`: external browser opening with popup blocker fallback.
+- `src/services/webAssistService.ts`: web search and content fetching.
+- `src/services/terminalService.ts`: terminal command execution via HTTP.
+- `src/services/terminalBridgeService.ts`: terminal bridge for command execution.
+- `src/utils/codeExecutor.ts`: unified code execution (iframe for JS, Pyodide for Python, terminal for shell).
+- `src/utils/securityUtils.ts`: command sandbox, path sanitization, tool validation, retry with backoff, rate limiter.
+- `src/data/amoSingleSource.ts`: single source of truth for all features, commands, and identity.
+- `src/data/amoInstantReplies.ts`: instant reply patterns and actions.
+- `src/data/amoHelpData.ts`: help knowledge for commands and prompt templates.
+- `src/data/userManual.ts`: comprehensive in-app user manual with 8 sections.
 - `src/index.css`: theme tokens, typography, glass styling, and shared utility classes.
 - `server.ts`: Vite middleware in dev, `dist/` hosting in production.
 
@@ -59,6 +91,9 @@
 - `npm run test`: runs Vitest for unit tests.
 - `npm run test:ui`: runs Vitest UI mode.
 - `npm run test:coverage`: runs Vitest with coverage.
+- `npm run test:amo`: runs Playwright UI tests for Amo.
+- `npm run test:amo:all`: runs all automated tests including security tests.
+- `npm run seed:vocab`: seeds vocabulary builder with 500+ words.
 - `npm run cap:wireless`: builds web assets, runs `npx cap sync`, sanitizes regenerated Capacitor Android Gradle warning sources, assembles the debug APK, performs streamed ADB install, and launches the app.
 - To run a single test file: `npm run test -- src/services/exampleService.test.ts`
 
@@ -72,11 +107,20 @@
 - `./gradlew :app:assembleDebug` succeeds for current Android sources.
 - `cap:wireless` now patches the regenerated `android/capacitor-cordova-android-plugins/build.gradle` after `cap sync` so recurring `flatDir` and Gradle property-syntax warnings do not reappear every deploy.
 
-**Single-Test Guidance**
-- To run a single test file: `npm run test -- src/services/exampleService.test.ts`
-- For verification today, use `npm run lint`, `npm run build`, and focused manual smoke tests.
-- Good manual checks: send a chat, stream a response, upload a text/PDF file, copy/regenerate a message, toggle voice/offline flows, verify settings tabs render on mobile, verify in-app API key entry, verify native GGUF download/import, and verify URL knowledge import.
-- To seed the "internet brain," place your curated `.txt/.md` dumps under a folder such as `knowledge-inputs/` and run `node scripts/importKnowledge.cjs knowledge-inputs` before building; the script generates `src/data/curatedKnowledge.ts` so the knowledge bootstrap import flow can load them.
+**Agent Skills**
+- 6 skills in `.github/skills/` for agent-driven development:
+  - `refactor-helper`: Cleans up messy code for readability and performance.
+  - `boilerplate-gen`: Generates standardized project files.
+  - `tdd-enforcer`: Drives development using Red-Green-Refactor loop.
+  - `auto-debugger`: Investigates and repairs failing tests or build errors.
+  - `cli-master`: Performs project administration and environment tasks.
+  - `doc-search`: Queries external documentation for latest API specifications.
+
+**Test Commands**
+- `npm run test:amo chat "what can you do"` — test chat response
+- `npm run test:amo security` — run red-team security tests
+- `npm run test:amo:all` — run all tests
+- `npm run seed:vocab` — seed vocabulary builder
 
 **Environment And Secrets**
 - Client env values use the Vite convention: `import.meta.env` with `VITE_*` names.
@@ -137,12 +181,17 @@
 - `console.error(...)` is used throughout the codebase for operational failures; keep logs contextual.
 - Throw `Error` objects with actionable messages for fetch and parsing failures.
 - Validate required runtime state early, e.g. missing engine instances or unsupported file types.
+- All cloud API calls have 60-second timeouts via AbortController.
+- Tool calls are validated before execution using `securityUtils.validateToolCall()`.
 
 **Networking And Streaming**
 - Groq chat responses stream via SSE-like `data:` lines; accumulate output incrementally.
 - WebLLM generation also streams and updates the full assembled response each chunk.
-- Keep spoken-response prompts plain-text friendly; current persona prompt explicitly avoids markdown.
+- Cloud models search the web automatically based on query intent.
+- Native models require the web search toggle to be ON for web search.
+- Keep spoken-response prompts plain-text friendly; markdown symbols are stripped for speech.
 - Preserve incremental UI updates instead of buffering a full response before render.
+- Speech starts immediately during streaming (sentence-by-sentence).
 
 **Persistence And IDs**
 - Chats are stored in `localStorage` under `amo_chats` with migration from `amo_chat_history`.
@@ -153,6 +202,8 @@
 - Use stable unique IDs for React keys and persisted entities.
 - Prefer `crypto.randomUUID()` when available; existing code falls back to timestamp + random for older support.
 - Be careful not to create duplicate message IDs during hydration or streaming.
+- Workspace files stored as `amo-file:{filename}` in localStorage.
+- Database init has retry logic for "database locked" errors with 500ms delay.
 
 **UI And Styling**
 - Tailwind utility classes are the main styling approach.
@@ -161,6 +212,26 @@
 - Reuse helper classes such as `glass-panel`, `micro-label`, `serif-content`, `nav-pill`, and `scroll-mask`.
 - `cn()` from `src/lib/utils.ts` is the standard class merge helper.
 - Motion uses `motion/react`; keep animations subtle and purposeful.
+
+**Code Editor**
+- Uses CodeMirror for syntax highlighting with 20+ language support.
+- File tree toggleable via folder icon button.
+- Run button executes code via `codeExecutor.ts` (iframe for JS, Pyodide for Python, terminal for shell).
+- Preview button shows HTML/JS in sandboxed iframe.
+- AI code generation via prompt input at bottom of editor.
+- TypeScript syntax is stripped before browser execution.
+
+**Speech Synthesis**
+- Three-tier fallback: native TTS (Android) → SpeechT5 (WASM) → browser speechSynthesis.
+- Markdown symbols stripped for natural speech.
+- Streaming speech: sentences spoken as they arrive during response generation.
+- Speech canceled when user sends new message.
+
+**Voice Recognition**
+- Native Android: Uses `NativeSpeechRecognitionPlugin` (Android SpeechRecognizer API).
+- Web fallback: Uses Web Speech API.
+- Continuous mode: auto-restarts after each utterance when enabled.
+- Must run on Android main thread.
 
 **Accessibility And UX**
 - Preserve `title` attributes on icon buttons.
@@ -185,9 +256,19 @@
 - Native offline chat on Android is driven through `nativeOfflineLlmService`; prefer its `downloadModel`, `importModel`, `setActiveModel`, and `getStatus` APIs rather than inventing parallel model state.
 - When debugging wireless installs or UI state, use `adb -t 2` consistently on this machine unless the active transport changes.
 - Avoid editing generated Android build artifacts unless the task explicitly targets native code.
+- All custom Android plugins must be registered in `MainActivity.java`:
+  - `CapacitorSQLitePlugin`
+  - `NativeTtsPlugin`
+  - `NativeTerminalPlugin`
+  - `NativeOfflineLlmPlugin`
+  - `NativePiperVoicePlugin`
+  - `SecretStorePlugin`
+  - `NativeSpeechRecognitionPlugin`
 
 **Working Agreement For Agents**
 - Make minimal, local edits and preserve user changes.
 - Do not add new dependencies or a test runner unless the task needs it.
 - If you add tests in the future, update this file with exact run commands, including single-test usage.
 - Before finishing non-trivial work, prefer running `npm run lint` and/or `npm run build` and report real failures clearly.
+- Use `securityUtils.ts` for command validation and path sanitization.
+- Use `codeExecutor.ts` for code execution (not raw eval or Function constructor).

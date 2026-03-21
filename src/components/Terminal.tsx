@@ -163,9 +163,16 @@ export const Terminal: React.FC<TerminalProps> = ({
 
     window.addEventListener('resize', handleResize);
 
+    // Refit when the terminal becomes visible (view switch)
+    const observer = new ResizeObserver(() => {
+      fitAddon.fit();
+    });
+    observer.observe(terminalRef.current);
+
     return () => {
       disposable.dispose();
       window.removeEventListener('resize', handleResize);
+      observer.disconnect();
       term.dispose();
     };
   }, []);

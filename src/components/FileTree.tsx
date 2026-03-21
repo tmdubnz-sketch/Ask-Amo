@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Folder, FileText, FileCode, File, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
+import { Folder, FileText, FileCode, File, ChevronRight, ChevronDown, RefreshCw, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface FileItem {
@@ -191,13 +191,29 @@ export const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, currentFile })
         <span className="text-xs font-medium text-white/60 uppercase tracking-wider">
           Explorer
         </span>
-        <button
-          onClick={loadFiles}
-          className="p-1 text-white/40 hover:text-white/80 transition-colors"
-          title="Refresh"
-        >
-          <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              const name = prompt('New file name:', 'untitled.js');
+              if (name) {
+                localStorage.setItem(`amo-file:${name}`, '');
+                loadFiles();
+                onFileSelect(name, '');
+              }
+            }}
+            className="p-1 text-white/40 hover:text-white/80 transition-colors"
+            title="New file"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={loadFiles}
+            className="p-1 text-white/40 hover:text-white/80 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
+          </button>
+        </div>
       </div>
 
       {/* File List */}

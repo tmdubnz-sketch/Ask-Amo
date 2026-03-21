@@ -49,6 +49,7 @@ export interface TagCombination {
 }
 
 export interface IntentPrediction {
+  id: string;
   intent: string;
   confidence: number;
   matchedKeywords: { keyword: string; weight: number; boost: number }[];
@@ -389,7 +390,7 @@ class IntentEnhancementService {
       const analysis = this.analyzeInput(request.userInput, keywords, tags, patterns);
       
       // Calculate intent scores
-      const intentScores = this.calculateIntentScores(analysis, request);
+      const intentScores = await this.calculateIntentScores(analysis, request);
       
       // Get top intent
       const topIntent = this.getTopIntent(intentScores);
@@ -398,6 +399,7 @@ class IntentEnhancementService {
       const alternatives = this.getAlternatives(intentScores, topIntent.intent);
       
       const prediction: IntentPrediction = {
+        id: `pred-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         intent: topIntent.intent,
         confidence: topIntent.confidence,
         matchedKeywords: analysis.matchedKeywords,
@@ -644,7 +646,7 @@ class IntentEnhancementService {
     };
   }
 
-  private calculateIntentScores(analysis: any, request: IntentEnhancementRequest): Map<string, number> {
+  private async calculateIntentScores(analysis: any, request: IntentEnhancementRequest): Promise<Map<string, number>> {
     const scores = new Map<string, number>();
 
     // Score from keywords
@@ -678,7 +680,8 @@ class IntentEnhancementService {
     }
 
     // Score from tag combinations
-    for (const tag of this.getTags()) {
+    const tags = await this.getTags();
+    for (const tag of tags) {
       for (const combination of tag.combinations) {
         if (this.matchesCombination(combination.tagIds, analysis.matchedTags)) {
           const currentScore = scores.get(combination.intent) || 0;
@@ -872,7 +875,7 @@ class IntentEnhancementService {
   }
 
   // Data access methods
-  private async getKeywords(): Promise<Keyword[]> {
+  async getKeywords(): Promise<Keyword[]> {
     try {
       const stored = localStorage.getItem(`${this.STORAGE_KEY}_keywords`);
       return stored ? JSON.parse(stored) : [...this.DEFAULT_KEYWORDS];
@@ -882,7 +885,7 @@ class IntentEnhancementService {
     }
   }
 
-  private async getTags(): Promise<Tag[]> {
+  async getTags(): Promise<Tag[]> {
     try {
       const stored = localStorage.getItem(`${this.STORAGE_KEY}_tags`);
       return stored ? JSON.parse(stored) : [...this.DEFAULT_TAGS];
@@ -892,7 +895,7 @@ class IntentEnhancementService {
     }
   }
 
-  private async getPatterns(): Promise<IntentPattern[]> {
+  async getPatterns(): Promise<IntentPattern[]> {
     try {
       const stored = localStorage.getItem(`${this.STORAGE_KEY}_patterns`);
       return stored ? JSON.parse(stored) : [...this.DEFAULT_PATTERNS];

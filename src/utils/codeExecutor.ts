@@ -14,6 +14,70 @@ export interface ExecutionResult {
   method: 'iframe' | 'pyodide' | 'terminal' | 'sandbox';
 }
 
+// ── TYPESCRIPT STRIPPER ───────────────────────────────────────────────────────
+// Removes TypeScript syntax for browser execution
+
+function stripTypeScript(code: string): string {
+  let result = code;
+  
+  // Remove single-line comments (but not URLs)
+  result = result.replace(/\/\/(?!https?:).*/gm, '');
+  
+  // Remove multi-line comments
+  result = result.replace(/\/\*[\s\S]*?\*\//g, '');
+  
+  // Remove interface declarations
+  result = result.replace(/\binterface\s+\w+\s*\{[^}]*\}/g, '');
+  
+  // Remove type declarations
+  result = result.replace(/\btype\s+\w+\s*=\s*[^;]+;/g, '');
+  
+  // Remove import type statements
+  result = result.replace(/\bimport\s+type\s+\{[^}]*\}\s+from\s+['"][^'"]+['"]\s*;?/g, '');
+  result = result.replace(/\bimport\s+type\s+\w+\s+from\s+['"][^'"]+['"]\s*;?/g, '');
+  
+  // Remove enum declarations
+  result = result.replace(/\benum\s+\w+\s*\{[^}]*\}/g, '');
+  
+  // Remove type annotations from parameters: (param: Type) -> (param)
+  result = result.replace(/(\w+)\s*:\s*\w+(\[\])?(\s*[=,)\]])/g, '$1$3');
+  
+  // Remove return type annotations: ): Type -> )
+  result = result.replace(/\)\s*:\s*\w+(\[\])?(\s*\{)/g, ')$2');
+  
+  // Remove type assertions: as Type
+  result = result.replace(/\s+as\s+\w+/g, '');
+  
+  // Remove generic type parameters: <Type>
+  result = result.replace(/<\w+(\s*,\s*\w+)*>/g, '');
+  
+  // Remove optional chaining with types: param?: Type -> param
+  result = result.replace(/(\w+)\?\s*:\s*\w+/g, '$1');
+  
+  // Remove readonly modifier
+  result = result.replace(/\breadonly\s+/g, '');
+  
+  // Remove access modifiers
+  result = result.replace(/\b(public|private|protected)\s+/g, '');
+  
+  // Remove abstract modifier
+  result = result.replace(/\babstract\s+/g, '');
+  
+  // Remove declare keyword
+  result = result.replace(/\bdeclare\s+/g, '');
+  
+  // Remove implements clause
+  result = result.replace(/\bimplements\s+\w+(\s*,\s*\w+)*/g, '');
+  
+  // Remove extends with type parameters
+  result = result.replace(/\bextends\s+\w+<[^>]+>/g, (match) => {
+    const className = match.match(/extends\s+(\w+)/);
+    return className ? `extends ${className[1]}` : '';
+  });
+  
+  return result.trim();
+}
+
 // ── IFRAME-BASED JS EXECUTION ─────────────────────────────────────────────────
 // Creates a hidden iframe, injects code, and captures console output.
 // Works on ALL platforms including Android WebView.
@@ -247,9 +311,12 @@ export async function executeCode(code: string, language: Language): Promise<Exe
   switch (lang) {
     case 'javascript':
     case 'js':
+      return executeJavaScript(code);
+
     case 'typescript':
     case 'ts':
-      return executeJavaScript(code);
+      // Strip TypeScript syntax for browser execution
+      return executeJavaScript(stripTypeScript(code));
 
     case 'python':
     case 'py':

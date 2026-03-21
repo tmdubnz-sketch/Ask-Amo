@@ -46,6 +46,7 @@ import {
   HardDrive,
 } from 'lucide-react';
 import { WebBrowser } from './components/WebBrowser';
+import { WelcomeGuide } from './components/WelcomeGuide';
 import { Terminal } from './components/Terminal';
 import { CodeEditor } from './components/CodeEditor';
 import { VocabularyBuilder } from './components/VocabularyBuilder';
@@ -59,7 +60,8 @@ import { geminiService } from './services/geminiService';
 import { mistralService } from './services/mistralService';
 import { assistantRuntimeService } from './services/assistantRuntimeService';
 import { documentService } from './services/documentService';
-import { knowledgeStoreService, knowledgeBootstrapService, nativeOfflineLlmService, audioCaptureService, speechT5Service, webBrowserService, voiceWebAssistService } from './services/index';
+import { knowledgeStoreService, knowledgeBootstrapService, nativeOfflineLlmService, speechT5Service, webBrowserService, voiceWebAssistService } from './services/index';
+import { nativeSpeechRecognitionService } from './services/nativeSpeechRecognitionService';
 import { workspaceService } from './services/workspaceService';
 import { injectFileContext } from './services/fileContextService';
 import { vectorDbService } from './services/vectorDbService';
@@ -2500,7 +2502,7 @@ export default function App({ ready = true }: AppProps) {
 
    const toggleListening = async () => {
      if (isListening) {
-       audioCaptureService.stop();
+       nativeSpeechRecognitionService.stop();
        setIsListening(false);
        // Clear any pending voice restart timers when stopping
        if (voiceRestartTimerRef.current) {
@@ -2508,99 +2510,69 @@ export default function App({ ready = true }: AppProps) {
          voiceRestartTimerRef.current = null;
        }
      } else {
-       audioCaptureService.setCallbacks(
-         (text: string, isFinal: boolean) => {
-           if (!isFinal) {
-             console.log('[Voice] Interim:', text);
-             return;
-           }
-            console.log('[Voice] Final:', text);
-            if (!text.trim()) {
-              setIsListening(false);
+        nativeSpeechRecognitionService.setCallbacks(
+          (text: string, isFinal: boolean) => {
+            if (!isFinal) {
+              console.log('[Voice] Interim:', text);
               return;
             }
-            inputRef.current = text;
-            setInput(text);
-            requestAnimationFrame(() => {
-              requestAnimationFrame(async () => {
-                // Check if this is a web search query and handle it with voice assist
-                const isWebQuery = shouldUseWebSearch(text) && navigator.onLine && isWebSearchEnabled;
-                
-                if (isWebQuery) {
-                  console.log('[Voice] Web query detected, using voice web assist');
-                  const handled = await handleVoiceWebSearch(text);
-                  
-                  if (handled) {
-                    // Web search was successful, don't send to regular handler
-                    if (voiceContinuous && !isLoading) {
-                      if (voiceRestartTimerRef.current) {
-                        clearTimeout(voiceRestartTimerRef.current);
-                      }
-                      voiceRestartTimerRef.current = setTimeout(() => {
-                        setIsListening(true);
-                        void audioCaptureService.start();
-                        voiceRestartTimerRef.current = null;
-                      }, 800);
-                    }
-                    if (!voiceContinuous) {
-                      setIsListening(false);
-                    }
-                    return;
-                  }
-                }
-                
-                // Not a web query or web query failed, use regular handler
-                await handleSend();
-                // Only restart if voiceContinuous is still enabled and not loading
-                if (voiceContinuous && !isLoading) {
-                  // Clear any existing timer before setting a new one to prevent duplicates
-                  if (voiceRestartTimerRef.current) {
-                    clearTimeout(voiceRestartTimerRef.current);
-                  }
-                  voiceRestartTimerRef.current = setTimeout(() => {
-                    setIsListening(true);
-                    void audioCaptureService.start();
-                    voiceRestartTimerRef.current = null;
-                  }, 800);
-                }
-              });
-            });
-            if (!voiceContinuous) {
-              setIsListening(false);
-            }
-         },
-         (error: string) => {
-           console.error('[Voice] Error:', error);
-           setError(error);
-           setIsListening(false);
-         }
-       );
-       setIsListening(true);
-       await audioCaptureService.start();
-     }
-   };
-
-   useEffect(() => {
-     // Auto-restart voice listening when loading finishes and voiceContinuous is enabled
-     if (!isLoading && voiceContinuous && !isListening) {
-       // Clear any existing timer before setting a new one
-       if (voiceRestartTimerRef.current) {
-         clearTimeout(voiceRestartTimerRef.current);
-       }
-       voiceRestartTimerRef.current = setTimeout(() => {
+             console.log('[Voice] Final:', text);
+             if (!text.trim()) {
+               if (!voiceContinuous) {
+                 setIsListening(false);
+               }
+               return;
+             }
+             inputRef.current = text;
+             setInput(text);
+             requestAnimationFrame(() => {
+               requestAnimationFrame(async () => {
+                 // Check if this is a web search query and handle it with voice assist
+                 const isWebQuery = shouldUseWebSearch(text) && navigator.onLine && isWebSearchEnabled;
+                 
+                 if (isWebQuery) {
+                   console.log('[Voice] Web query detected, using voice web assist');
+                   const handled = await handleVoiceWebSearch(text);
+                   
+                   if (handled) {
+                     // Web search was successful, don't send to regular handler
+                     if (!voiceContinuous) {
+                       setIsListening(false);
+                     }
+                     return;
+                   }
+                 }
+                 
+                 // Not a web query or web query failed, use regular handler
+                 await handleSend();
+                 if (!voiceContinuous) {
+                   setIsListening(false);
+                 }
+               });
+             });
+          },
+          (error: string) => {
+            console.error('[Voice] Error:', error);
+            setError(error);
+            setIsListening(false);
+          }
+         );
+         // Start speech recognition
          setIsListening(true);
-         void audioCaptureService.start();
-         voiceRestartTimerRef.current = null;
-       }, 600);
-       return () => {
-         // Cleanup: cancel the timer if component unmounts or dependencies change
-         if (voiceRestartTimerRef.current) {
-           clearTimeout(voiceRestartTimerRef.current);
-           voiceRestartTimerRef.current = null;
-         }
-       };
-     }
-   }, [isLoading, voiceContinuous, isListening]);
+         await nativeSpeechRecognitionService.start();
+      }
+    };
+
+    useEffect(() => {
+      // Auto-restart voice listening when loading finishes and voiceContinuous is enabled
+      if (!isLoading && voiceContinuous && !isListening && !nativeSpeechRecognitionService.isActive()) {
+        const timer = setTimeout(() => {
+          setIsListening(true);
+          void nativeSpeechRecognitionService.start();
+        }, 600);
+        return () => clearTimeout(timer);
+      }
+    }, [isLoading, voiceContinuous, isListening]);
 
   const handleCopy = (text: string) => navigator.clipboard.writeText(text);
 
@@ -2684,6 +2656,7 @@ export default function App({ ready = true }: AppProps) {
           )}
         </div>
       )}
+      <WelcomeGuide onComplete={() => {}} />
       <ErrorBoundary fallback={DefaultFallback}>
       <div className="flex flex-col h-screen bg-black text-[#E0E0E0] font-sans selection:bg-[#ff4e00]/30 relative overflow-hidden">
           <div className="atmosphere" />

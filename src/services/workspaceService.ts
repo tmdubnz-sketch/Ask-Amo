@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { Directory, Filesystem } from '@capacitor/filesystem';
+import { Directory, Filesystem, Encoding } from '@capacitor/filesystem';
 
 export interface Workspace {
   id: string;
@@ -175,7 +175,7 @@ export class WorkspaceService {
         path: fullPath,
         data: content,
         directory: Directory.Documents,
-        encoding: 'utf8'
+        encoding: Encoding.UTF8
       });
     } else {
       // In browser, use download
@@ -204,7 +204,7 @@ export class WorkspaceService {
         path: workspace.path,
         directory: Directory.Documents
       });
-      return result.files;
+      return result.files.map(f => f.name);
     } catch (error) {
       console.error('[Workspace] Failed to list files:', error);
       return [];

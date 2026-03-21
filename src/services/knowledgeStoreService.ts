@@ -132,12 +132,45 @@ export class KnowledgeStoreService {
 
     if (!this.initPromise) {
       this.initPromise = this.initializeInternal().catch((err) => {
+        console.error('[KnowledgeStore] Init failed, resetting promise for retry:', err);
         this.initPromise = null;
         throw err;
       });
     }
 
-    await this.initPromise;
+    try {
+      await this.initPromise;
+    } catch (err) {
+      // If init failed with database locked, try to close and reopen
+      if (err instanceof Error && err.message.includes('locked')) {
+        console.warn('[KnowledgeStore] Database locked, attempting recovery...');
+        this.initPromise = null;
+        
+        // Wait a bit for locks to release
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Try to close any existing connection
+        try {
+          if (this.db && 'close' in this.db) {
+            await (this.db as any).close();
+          }
+        } catch (closeErr) {
+          console.warn('[KnowledgeStore] Close failed during recovery:', closeErr);
+        }
+        this.db = null;
+        
+        // Retry initialization
+        if (!this.initPromise) {
+          this.initPromise = this.initializeInternal().catch((retryErr) => {
+            this.initPromise = null;
+            throw retryErr;
+          });
+        }
+        await this.initPromise;
+      } else {
+        throw err;
+      }
+    }
   }
 
   private async initializeInternal(): Promise<void> {
@@ -321,7 +354,18 @@ export class KnowledgeStoreService {
 
       // Simplified INSERT without parameters to avoid issues
       console.log('[KnowledgeStore] Setting schema version...');
-      await db.exec(`INSERT OR IGNORE INTO app_meta(key, value) VALUES('schema_version', '${SCHEMA_VERSION}')`);
+      try {
+        await db.exec(`INSERT OR IGNORE INTO app_meta(key, value) VALUES('schema_version', '${SCHEMA_VERSION}')`);
+      } catch (schemaErr) {
+        // If database is locked, retry after a brief delay
+        if (schemaErr instanceof Error && schemaErr.message.includes('locked')) {
+          console.warn('[KnowledgeStore] Database locked on schema insert, retrying...');
+          await new Promise(resolve => setTimeout(resolve, 200));
+          await db.exec(`INSERT OR IGNORE INTO app_meta(key, value) VALUES('schema_version', '${SCHEMA_VERSION}')`);
+        } else {
+          throw schemaErr;
+        }
+      }
       console.log('[KnowledgeStore] ✓ Schema version set');
 
       await this.migrateLegacyVectors(db);
