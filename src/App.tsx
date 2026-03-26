@@ -2019,10 +2019,17 @@ export default function App({ ready = true }: AppProps) {
         addMessage('user', userPrompt, pendingImage || undefined);
         const assistantId = addStreamingMessage('assistant');
         activeAssistantMessageIdRef.current = assistantId;
-        updateMessage(assistantId, deterministic.reply, false);
+        
+        // Include follow-up question if available
+        let fullReply = deterministic.reply;
+        if (deterministic.followUp) {
+          fullReply += `\n\n${deterministic.followUp}`;
+        }
+        
+        updateMessage(assistantId, fullReply, false);
         finalizeMessage(assistantId);
-        await persistExchangeToBrain(userPrompt, deterministic.reply);
-        if (isVoiceModeRef.current) speak(deterministic.reply);
+        await persistExchangeToBrain(userPrompt, fullReply);
+        if (isVoiceModeRef.current) speak(fullReply);
 
         // Execute instant actions
         if (deterministic.actions) {

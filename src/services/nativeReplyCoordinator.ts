@@ -46,7 +46,7 @@ function needsClarification(userInput: string): string | null {
 
 // ── MAIN DETERMINISTIC REPLY FUNCTION ────────────────────────────────────────
 
-function buildDeterministicReply(userInput: string): { reply: string; actions?: string[] } | null {
+function buildDeterministicReply(userInput: string): { reply: string; actions?: string[]; followUp?: string } | null {
   const normalized = userInput.replace(/\s+/g, ' ').trim().toLowerCase();
   if (!normalized) return null;
 
@@ -65,6 +65,14 @@ function buildDeterministicReply(userInput: string): { reply: string; actions?: 
   // Check for intent match using seed pack data
   const match = matchIntent(normalized);
   if (match) {
+    // If there's a clarification field, add it as a follow-up question
+    if (match.clarification) {
+      return { 
+        reply: match.reply, 
+        actions: match.actions,
+        followUp: match.clarification 
+      };
+    }
     return { reply: match.reply, actions: match.actions };
   }
 

@@ -28,6 +28,30 @@ export const AMO_INSTANT_REPLIES: InstantReply[] = [
     tags: ['identity', 'who', 'name', 'about'],
   },
 
+  // ── CAPABILITIES ────────────────────────────────────────────────────────────
+  {
+    id: 'capability-code',
+    patterns: [
+      '\\b(can you|could you|will you|do you).*(code|program|script|write code|create code|generate code)',
+      '\\b(code|program|script)\\b.*\\b(able|can|do)',
+      '\\byes\\b.*\\bcode\\b',
+    ],
+    reply: "Yes! I can write code in many languages — JavaScript, Python, TypeScript, HTML, CSS, and more. Just tell me what you need: 'write a function to sort a list', 'create a Python script for X', or 'build a simple web app'. Should I open the code editor?",
+    actions: ['switch_to_editor'],
+    tags: ['capability', 'code', 'programming', 'yes'],
+    clarification: 'What would you like me to code?',
+  },
+  {
+    id: 'capability-help',
+    patterns: [
+      '\\b(can you|could you|will you|do you).*(help|assist|do things)',
+      '\\bwhat (can|do) you (can|do)\\b',
+      '\\byes\\b.*\\bhelp\\b',
+    ],
+    reply: "Yes! I can help with: writing and debugging code, searching the web, running terminal commands, managing files, building vocabulary, answering questions, and more. What do you need?",
+    tags: ['capability', 'help', 'abilities'],
+  },
+
   // ── GRATITUDE ──────────────────────────────────────────────────────────────
   {
     id: 'gratitude-thanks',
