@@ -8,6 +8,8 @@
 //               .sh .bash .sql .graphql .proto
 //   Archives:   not supported — instruct user to extract first
 
+import { useRagSettingsStore } from '../stores/ragSettingsStore';
+
 export interface ParsedDocument {
   content: string;
   title: string;
@@ -804,9 +806,10 @@ export interface DocumentChunk {
   metadata: any;
 }
 
-export function chunkDocument(content: string, documentId: string, documentName: string): DocumentChunk[] {
-  const chunkSize = 1000;
-  const chunkOverlap = 200;
+export function chunkDocument(content: string, documentId: string, documentName: string, customChunkSize?: number): DocumentChunk[] {
+  const settings = useRagSettingsStore.getState();
+  const chunkSize = customChunkSize || settings.chunkSize;
+  const chunkOverlap = Math.floor(chunkSize * 0.2);
   const chunks: DocumentChunk[] = [];
   
   let start = 0;

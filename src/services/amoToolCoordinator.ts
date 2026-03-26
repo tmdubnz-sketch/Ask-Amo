@@ -3,9 +3,10 @@ import { webBrowserService } from './webBrowserService';
 import { browserService } from './browserService';
 import { workspaceWriteService } from './workspaceWriteService';
 import { amoBrainService } from './amoBrainService';
+import { autoLearningService } from './autoLearningService';
 import type { ExtractedSlots } from './slotExtractorService';
 
-export type ToolUsed = 'terminal' | 'webview' | 'workspace' | 'websearch' | 'none';
+export type ToolUsed = 'terminal' | 'webview' | 'workspace' | 'websearch' | 'external-browser' | 'none';
 
 export interface CoordinatorResult {
   contextBlock: string;
@@ -36,6 +37,11 @@ function routeToTools(slots: ExtractedSlots): ToolUsed[] {
     (action === 'retrieve' && !target)
   ) {
     tools.push('webview');
+  }
+
+  // External browser routing
+  if (target === 'external-browser' || target === 'browser') {
+    tools.push('external-browser');
   }
 
   // Web search routing
@@ -198,6 +204,36 @@ export const amoToolCoordinator = {
           contextParts.push(
             `[Current page content]\n${webBrowserService.formatForContext(page)}`
           );
+          
+          // Auto-learn vocabulary from web content
+          void autoLearningService.learnFromWeb(page.content, options.currentWebViewUrl, page.title);
+        }
+      }
+    }
+
+    // External browser - open URL in system browser
+    if (tools.includes('external-browser')) {
+      if (slots.url) {
+        const urlToOpen = webBrowserService.resolveUrl(slots.url);
+        if (options.isOnline && browserService.isSupported()) {
+          await browserService.open(urlToOpen);
+          result.toolsUsed.push('external-browser');
+          result.instantReply = `Opening ${slots.url} in your browser.`;
+        } else if (!options.isOnline) {
+          result.instantReply = "Can't open browser - you're currently offline.";
+        } else {
+          result.instantReply = `Browser opening isn't supported on this device.`;
+        }
+      } else if (slots.topic) {
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(slots.topic)}`;
+        if (options.isOnline && browserService.isSupported()) {
+          await browserService.open(searchUrl);
+          result.toolsUsed.push('external-browser');
+          result.instantReply = `Searching "${slots.topic}" in your browser.`;
+        } else if (!options.isOnline) {
+          result.instantReply = "Can't search - you're currently offline.";
+        } else {
+          result.instantReply = `Browser opening isn't supported on this device.`;
         }
       }
     }

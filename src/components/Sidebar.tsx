@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useModelSettingsStore } from '../stores/modelSettingsStore';
+import { useRagSettingsStore } from '../stores/ragSettingsStore';
+import { useResponseCacheStore } from '../stores/responseCacheStore';
 import {
   MessageSquare,
   FolderOpen,
@@ -31,6 +33,7 @@ import { cn } from '../lib/utils';
 import { AMO_COMMANDS, AMO_PROMPT_TEMPLATES } from '../data/amoHelpData';
 import { ModelDownloadManager, type DownloadableModel } from './ModelDownloadManager';
 import { voicePersonaService, VOICE_PERSONAS, type VoicePersonaType } from '../services/voicePersonaService';
+import { vectorDbService } from '../services/vectorDbService';
 import type { ChatSession } from '../types';
 import type {
   ConversationMemoryRow,
@@ -285,10 +288,56 @@ function FilesPanel(props: SidebarProps) {
 }
 
 function BrainPanel(props: SidebarProps) {
+  const [docStats, setDocStats] = useState<{ totalDocuments: number; totalChunks: number; documents: Array<{ id: string; name: string; chunks: number }> }>({ totalDocuments: 0, totalChunks: 0, documents: [] });
+  const [showDocs, setShowDocs] = useState(false);
+
+  useState(() => {
+    const updateStats = () => setDocStats(vectorDbService.getStats());
+    updateStats();
+  });
+
+  const handleDeleteDoc = async (docId: string) => {
+    await vectorDbService.deleteDocument(docId);
+    setDocStats(vectorDbService.getStats());
+  };
+
   return (
     <>
       <PanelHeader title="Brain status" subtitle="Memory, knowledge, and cognition" />
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
+        <SectionLabel>Knowledge Base</SectionLabel>
+        <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-2 mb-2">
+          <StatRow label="Documents" value={docStats.totalDocuments} />
+          <StatRow label="Chunks" value={docStats.totalChunks} />
+          {docStats.totalDocuments > 0 && (
+            <button
+              onClick={() => setShowDocs(!showDocs)}
+              className="text-[10px] text-[#ff4e00] mt-1 hover:underline"
+            >
+              {showDocs ? 'Hide' : 'Show'} documents
+            </button>
+          )}
+        </div>
+        
+        {showDocs && docStats.documents.length > 0 && (
+          <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-2 mb-2 space-y-1">
+            {docStats.documents.map(doc => (
+              <div key={doc.id} className="flex items-center justify-between text-[10px]">
+                <div className="truncate flex-1">
+                  <span className="text-white/60">{doc.name}</span>
+                  <span className="text-white/30 ml-1">({doc.chunks} chunks)</span>
+                </div>
+                <button
+                  onClick={() => handleDeleteDoc(doc.id)}
+                  className="text-red-400 hover:text-red-300 ml-2"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <SectionLabel>Memory</SectionLabel>
         <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-2 mb-2">
           <StatRow label="Memory notes" value={props.brainMemoryRows.length} />
@@ -533,6 +582,7 @@ function HelpPanel(props: SidebarProps) {
 
 function SettingsPanel(props: SidebarProps) {
   const { temperature, topP, maxTokens, setTemperature, setTopP, setMaxTokens } = useModelSettingsStore();
+  const { chunkSize, topK, relevanceThreshold, hybridSearch, setChunkSize, setTopK, setRelevanceThreshold, setHybridSearch } = useRagSettingsStore();
   const [importFile, setImportFile] = useState<File | null>(null);
   const [activePersona, setActivePersona] = useState(() => voicePersonaService.getActivePersona());
   
@@ -656,6 +706,111 @@ function SettingsPanel(props: SidebarProps) {
             />
             <p className="text-[9px] text-white/40 mt-1">Maximum response length</p>
           </div>
+        </div>
+
+        <SectionLabel>RAG Retrieval</SectionLabel>
+        <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-3 space-y-3">
+          <div>
+            <div className="flex justify-between text-[10px] text-white/60 mb-1">
+              <span>Chunk Size</span>
+              <span>{chunkSize}</span>
+            </div>
+            <input
+              type="range"
+              min="128"
+              max="1024"
+              step="64"
+              value={chunkSize}
+              onChange={(e) => setChunkSize(Number(e.target.value))}
+              className="w-full accent-[#ff4e00]"
+            />
+            <p className="text-[9px] text-white/40 mt-1">Text segments for embedding</p>
+          </div>
+          <div>
+            <div className="flex justify-between text-[10px] text-white/60 mb-1">
+              <span>Top K Results</span>
+              <span>{topK}</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              step="1"
+              value={topK}
+              onChange={(e) => setTopK(Number(e.target.value))}
+              className="w-full accent-[#ff4e00]"
+            />
+            <p className="text-[9px] text-white/40 mt-1">Documents to retrieve</p>
+          </div>
+          <div>
+            <div className="flex justify-between text-[10px] text-white/60 mb-1">
+              <span>Relevance Threshold</span>
+              <span>{relevanceThreshold.toFixed(2)}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="0.9"
+              step="0.1"
+              value={relevanceThreshold}
+              onChange={(e) => setRelevanceThreshold(Number(e.target.value))}
+              className="w-full accent-[#ff4e00]"
+            />
+            <p className="text-[9px] text-white/40 mt-1">Minimum similarity score</p>
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
+            <div className="text-[10px]">
+              <div className="text-white/80">Hybrid Search</div>
+              <div className="text-white/40 text-[9px]">Keyword + semantic</div>
+            </div>
+            <button
+              onClick={() => setHybridSearch(!hybridSearch)}
+              className={cn(
+                'w-10 h-5 rounded-full transition-all relative',
+                hybridSearch ? 'bg-[#ff4e00]' : 'bg-white/20'
+              )}
+            >
+              <div className={cn(
+                'absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all',
+                hybridSearch ? 'left-5' : 'left-0.5'
+              )} />
+            </button>
+          </div>
+        </div>
+
+        <SectionLabel>Response Cache</SectionLabel>
+        <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-2 space-y-2">
+          {(() => {
+            const stats = useResponseCacheStore.getState().getStats();
+            return (
+              <>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-white/60">Cache hits</span>
+                  <span className="text-emerald-400">{stats.hits}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-white/60">Cache misses</span>
+                  <span className="text-amber-400">{stats.misses}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-white/60">Hit rate</span>
+                  <span className="text-[#ff4e00]">{stats.hitRate}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-white/60">Cached responses</span>
+                  <span className="text-white/40">{stats.size}</span>
+                </div>
+                {stats.size > 0 && (
+                  <button
+                    onClick={() => useResponseCacheStore.getState().clearCache()}
+                    className="w-full mt-2 py-1.5 text-[10px] text-red-400 border border-red-400/30 rounded-lg hover:bg-red-400/10"
+                  >
+                    Clear cache
+                  </button>
+                )}
+              </>
+            );
+          })()}
         </div>
         
         <SectionLabel>Brain Data</SectionLabel>

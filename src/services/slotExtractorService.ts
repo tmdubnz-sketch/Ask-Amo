@@ -1,3 +1,5 @@
+import { intentRefinementService } from './intentRefinementService';
+
 export interface ExtractedSlots {
   action: string | null;
   subject: string | null;
@@ -10,6 +12,13 @@ export interface ExtractedSlots {
   url: string | null;
   rawIntent: string;
   confidence: number;
+  // Deep intent analysis
+  intentType?: 'informational' | 'transactional' | 'conversational' | 'ambiguous';
+  sentenceType?: 'declarative' | 'interrogative' | 'imperative' | 'exclamatory';
+  keyVariables?: Array<{ word: string; type: string; canBeClarified: boolean }>;
+  needsClarification?: boolean;
+  followUpQuestions?: string[];
+  adjustmentSuggestion?: string;
 }
 
 const SLOT_PATTERNS = {
@@ -38,6 +47,7 @@ const SLOT_PATTERNS = {
   ],
 
   target: [
+    { pattern: /\b(external\s*browser|native\s*browser|system\s*browser|open\s+in\s*browser)\b/i, value: 'external-browser' },
     { pattern: /\b(webview|web\s*view|browser|android\s+browser)\b/i, value: 'webview' },
     { pattern: /\b(terminal|console|shell|command\s+line|bash)\b/i, value: 'terminal' },
     { pattern: /\b(code\s+editor|editor|ide|coding\s+view)\b/i, value: 'editor' },
@@ -170,6 +180,19 @@ export function extractSlots(input: string): ExtractedSlots {
   const filledSlots = Object.values(slots)
     .filter(v => v !== null && v !== input && typeof v === 'string').length;
   slots.confidence = Math.min(filledSlots / 4, 1);
+
+  // Deep intent analysis for better understanding
+  const refinedIntent = intentRefinementService.analyze(input);
+  slots.intentType = refinedIntent.intentType;
+  slots.sentenceType = refinedIntent.structure.type;
+  slots.keyVariables = refinedIntent.keyVariables.map(v => ({
+    word: v.word,
+    type: v.type,
+    canBeClarified: v.canBeClarified,
+  }));
+  slots.needsClarification = refinedIntent.needsClarification;
+  slots.followUpQuestions = refinedIntent.suggestedFollowUps.map(q => q.question);
+  slots.adjustmentSuggestion = refinedIntent.adjustedQuery;
 
   return slots;
 }

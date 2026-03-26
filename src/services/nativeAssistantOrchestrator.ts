@@ -1,6 +1,7 @@
 import type { NativeOfflineStatus } from './nativeOfflineLlmService';
 import type { NativeSessionMessage } from './nativeChatSessionService';
 import { AMO_FEATURES, AMO_COMMANDS, AMO_IDENTITY } from '../data/amoSingleSource';
+import { classifyIntent, type IntentType } from './intentClassifierService';
 
 // ── LIMITS ────────────────────────────────────────────────────────────────────
 // Tuned for Phi-3.5 Mini / 3B+ on Snapdragon 865
@@ -68,6 +69,73 @@ const AMO_RANDOM_TIPS = AMO_FEATURES
 
 function getRandomTip(): string {
   return AMO_RANDOM_TIPS[Math.floor(Math.random() * AMO_RANDOM_TIPS.length)];
+}
+
+// ── PROMPT COMPRESSION TEMPLATES ───────────────────────────────────────────────
+// Compress prompts based on intent type for faster inference
+
+const PROMPT_TEMPLATES: Record<IntentType, { maxChars: number; addendum: string }> = {
+  chat: {
+    maxChars: 600,
+    addendum: 'Be brief and conversational.',
+  },
+  code: {
+    maxChars: 1200,
+    addendum: 'Provide working code with brief explanation.',
+  },
+  task: {
+    maxChars: 1500,
+    addendum: 'Break into steps. Execute tools as needed.',
+  },
+  search: {
+    maxChars: 800,
+    addendum: 'Be concise and factual.',
+  },
+  help: {
+    maxChars: 1000,
+    addendum: 'List relevant features or commands.',
+  },
+  file: {
+    maxChars: 700,
+    addendum: 'Confirm file operations.',
+  },
+  terminal: {
+    maxChars: 700,
+    addendum: 'Run commands and show output.',
+  },
+  knowledge: {
+    maxChars: 900,
+    addendum: 'Use indexed documents when relevant.',
+  },
+  memory: {
+    maxChars: 600,
+    addendum: 'Store or retrieve as requested.',
+  },
+  settings: {
+    maxChars: 500,
+    addendum: 'Guide to settings.',
+  },
+  voice: {
+    maxChars: 500,
+    addendum: 'Enable voice mode.',
+  },
+  unknown: {
+    maxChars: 800,
+    addendum: '',
+  },
+};
+
+export function compressPrompt(userInput: string, basePrompt: string): string {
+  const intent = classifyIntent(userInput);
+  const template = PROMPT_TEMPLATES[intent.type];
+  
+  const compressed = normalizeText(basePrompt, template.maxChars);
+  
+  if (template.addendum) {
+    return compressed + '\n\n' + template.addendum;
+  }
+  
+  return compressed;
 }
 
 // ── COMMUNICATION EXAMPLES ─────────────────────────────────────────────────────

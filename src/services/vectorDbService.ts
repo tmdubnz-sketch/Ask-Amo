@@ -1,5 +1,6 @@
 import { pipeline, env } from '@xenova/transformers';
 import { knowledgeStoreService } from './knowledgeStoreService';
+import { useRagSettingsStore } from '../stores/ragSettingsStore';
 
 // Configure transformers.js for local use
 env.allowLocalModels = false;
@@ -68,20 +69,56 @@ export class VectorDbService {
     await knowledgeStoreService.deleteDocument(documentId);
   }
 
-  async search(query: string, limit: number = 3): Promise<VectorDocument[]> {
+  async search(query: string, limit?: number): Promise<VectorDocument[]> {
     if (!this.isInitialized) await this.init();
     
+    const settings = useRagSettingsStore.getState();
+    const topK = limit ?? settings.topK;
+    const threshold = settings.relevanceThreshold;
+    
+    let results: VectorDocument[];
+    
+    if (settings.hybridSearch) {
+      results = await this.hybridSearch(query, topK);
+    } else {
+      const queryEmbedding = await this.generateEmbedding(query);
+      results = this.documents
+        .map(doc => ({
+          ...doc,
+          similarity: this.cosineSimilarity(queryEmbedding, doc.embedding)
+        }))
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, topK);
+    }
+    
+    return results.filter(doc => (doc as any).similarity >= threshold);
+  }
+
+  private async hybridSearch(query: string, limit: number): Promise<VectorDocument[]> {
     const queryEmbedding = await this.generateEmbedding(query);
     
-    const results = this.documents
-      .map(doc => ({
-        ...doc,
-        similarity: this.cosineSimilarity(queryEmbedding, doc.embedding)
-      }))
+    const keywordTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+    
+    const scored = this.documents.map(doc => {
+      let keywordScore = 0;
+      if (keywordTerms.length > 0) {
+        const contentLower = doc.content.toLowerCase();
+        for (const term of keywordTerms) {
+          if (contentLower.includes(term)) {
+            keywordScore += 1 / keywordTerms.length;
+          }
+        }
+      }
+      
+      const semanticScore = this.cosineSimilarity(queryEmbedding, doc.embedding);
+      const combinedScore = (keywordScore * 0.3) + (semanticScore * 0.7);
+      
+      return { ...doc, similarity: combinedScore };
+    });
+    
+    return scored
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, limit);
-      
-    return results;
   }
 
   private cosineSimilarity(vecA: number[], vecB: number[]): number {
@@ -105,6 +142,32 @@ export class VectorDbService {
 
   getDocuments() {
     return this.documents;
+  }
+
+  getStats() {
+    const docMap = new Map<string, { name: string; chunks: number }>();
+    for (const doc of this.documents) {
+      const existing = docMap.get(doc.documentId);
+      if (existing) {
+        existing.chunks++;
+      } else {
+        docMap.set(doc.documentId, { name: doc.documentName, chunks: 1 });
+      }
+    }
+    return {
+      totalDocuments: docMap.size,
+      totalChunks: this.documents.length,
+      documents: Array.from(docMap.entries()).map(([id, data]) => ({
+        id,
+        name: data.name,
+        chunks: data.chunks,
+      })),
+    };
+  }
+
+  async deleteDocument(documentId: string) {
+    this.documents = this.documents.filter(doc => doc.documentId !== documentId);
+    await knowledgeStoreService.deleteDocument(documentId);
   }
 }
 

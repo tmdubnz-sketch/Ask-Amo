@@ -6,6 +6,7 @@ import {
   type ToolRegistryRow,
 } from './knowledgeStoreService';
 import { builderBridgeService } from './builderBridgeService';
+import { neuralBuilderBridge } from './neuralBuilderBridge';
 
 function trimText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
@@ -189,6 +190,14 @@ export const amoBrainService = {
       const builderContext = await builderBridgeService.getBuilderContext();
       if (builderContext) lines.push(builderContext);
     } catch { /* builder state is optional */ }
+
+    // Add neural builder link for deeper feature awareness
+    try {
+      const neuralLink = await neuralBuilderBridge.getNeuralLink();
+      if (neuralLink.isActive) {
+        lines.push('[Neural Builder Link] ' + neuralLink.understanding);
+      }
+    } catch { /* neural bridge is optional */ }
 
     return lines.join('\n').trim();
   },

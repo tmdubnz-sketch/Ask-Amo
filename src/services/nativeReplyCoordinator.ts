@@ -2,6 +2,7 @@ import { nativeAssistantOrchestrator } from './nativeAssistantOrchestrator';
 import { nativeChatSessionService } from './nativeChatSessionService';
 import type { NativeOfflineStatus } from './nativeOfflineLlmService';
 import { AMO_INSTANT_REPLIES, type InstantReply } from '../data/amoInstantReplies';
+import { neuralBuilderBridge } from './neuralBuilderBridge';
 
 // ── INSTANT REPLY ENGINE ──────────────────────────────────────────────────────
 // Handles common queries instantly without model inference.
@@ -53,6 +54,12 @@ function buildDeterministicReply(userInput: string): { reply: string; actions?: 
   const clarification = needsClarification(normalized);
   if (clarification) {
     return { reply: clarification };
+  }
+
+  // Check for identity/neural questions dynamically
+  if (/\b(who are you|what are you|tell me about yourself|your name|your brain|how.*work|what.*connect|neural)\b/i.test(normalized)) {
+    const neuralInfo = neuralBuilderBridge.getNeuralExplanation();
+    return { reply: neuralInfo };
   }
 
   // Check for intent match using seed pack data

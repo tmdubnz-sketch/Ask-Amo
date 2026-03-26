@@ -221,6 +221,13 @@ class VocabularyService {
   }
 
   /**
+   * Get all vocabulary words (public for auto-learning)
+   */
+  async getAllVocabularyWordsPublic(): Promise<VocabularyWord[]> {
+    return this.getAllVocabularyWords();
+  }
+
+  /**
    * Review and update mastery level for a word
    */
   async reviewWord(wordId: string, performance: 'excellent' | 'good' | 'fair' | 'poor'): Promise<VocabularyWord> {

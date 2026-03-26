@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
@@ -94,6 +94,9 @@ import type { ConversationMemoryRow, MemorySummaryRow, SeedPackRow, ToolRegistry
 import type { Workspace } from './services/workspaceService';
 import { cn } from './lib/utils';
 import { voicePersonaService } from './services/voicePersonaService';
+import { useResponseCacheStore } from './stores/responseCacheStore';
+import { classifyIntent } from './services/intentClassifierService';
+import { autoLearningService } from './services/autoLearningService';
 
 type SettingsSection = 'general' | 'models' | 'knowledge' | 'workspace' | 'cognition';
 type ImportSourceKind = 'document' | 'skill' | 'dataset';
@@ -500,6 +503,7 @@ export default function App({ ready = true }: AppProps) {
     return stored === null ? true : stored === 'true';
   });
   const [isListening, setIsListening] = useState(false);
+  const isListeningRef = useRef(false);
   const [voiceContinuous, setVoiceContinuous] = useState(() => {
     const stored = localStorage.getItem('amo_voice_continuous');
     return stored === null ? false : stored === 'true';
@@ -527,7 +531,7 @@ export default function App({ ready = true }: AppProps) {
    const [webViewUrl, setWebViewUrl] = useState('amo://dashboard');
    const [isWebAssistActive, setIsWebAssistActive] = useState(false);
    const [toasts, setToasts] = useState<Toast[]>([]);
-   const [pendingEditorCode, setPendingEditorCode] = useState<{ code: string; filename: string; autoRun?: boolean } | null>(null);
+   const [pendingEditorCode, setPendingEditorCode] = useState<{ code: string; filename: string; autoRun?: boolean; token: string } | null>(null);
    const [amoTerminalOutput, setAmoTerminalOutput] = useState<string>('');
    
   const [brainMemoryRows, setBrainMemoryRows] = useState<ConversationMemoryRow[]>([]);
@@ -543,13 +547,24 @@ export default function App({ ready = true }: AppProps) {
    const skillInputRef = useRef<HTMLInputElement>(null);
    const inputRef = useRef(input);
    const isVoiceModeRef = useRef(isVoiceMode);
+   const voiceContinuousRef = useRef(voiceContinuous);
+   const isWebSearchEnabledRef = useRef(isWebSearchEnabled);
+   const isLoadingRef = useRef(isLoading);
    const activeRequestIdRef = useRef(0);
    const canceledRequestIdsRef = useRef(new Set<number>());
    const activeAssistantMessageIdRef = useRef<string | null>(null);
    const voiceRestartTimerRef = useRef<NodeJS.Timeout | null>(null);
+   const isVoiceProcessingRef = useRef(false);
+   const isSpeakingRef = useRef(false);
+   const handleSendRef = useRef<(() => Promise<void>) | null>(null);
+   const handleVoiceWebSearchRef = useRef<((query: string) => Promise<boolean>) | null>(null);
 
   useEffect(() => { inputRef.current = input; }, [input]);
   useEffect(() => { isVoiceModeRef.current = isVoiceMode; }, [isVoiceMode]);
+  useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
+  useEffect(() => { voiceContinuousRef.current = voiceContinuous; }, [voiceContinuous]);
+  useEffect(() => { isWebSearchEnabledRef.current = isWebSearchEnabled; }, [isWebSearchEnabled]);
+  useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1472,6 +1487,13 @@ export default function App({ ready = true }: AppProps) {
 
       void brainLearningService.analyseAndLearn(userContent, assistantContent, currentChatId);
 
+      // Auto-learn vocabulary from chat exchange
+      const combinedText = `${userContent} ${assistantContent}`;
+      const newTerms = autoLearningService.getNewTermsCount(combinedText);
+      if (newTerms > 0) {
+        void autoLearningService.learnFromChat(combinedText, currentChatId);
+      }
+
       // Record cloud responses for local model learning
       if (isCloudModel && assistantContent.length > 50) {
         void recordCloudResponseForLocalLearning(userContent, assistantContent);
@@ -1736,16 +1758,12 @@ export default function App({ ready = true }: AppProps) {
       const filename = `amo-generated-${Date.now()}-${savedCount}${extension}`;
 
       try {
-        // Store code for the editor
-        setPendingEditorCode({ code: trimmedCode, filename });
+        await openCodeInEditor(trimmedCode, filename);
         savedCount++;
 
         // Always replace with a reference — user can switch to editor to see it
         const replacement = `[Code saved to \`${filename}\` — switch to Code Editor to view and edit]`;
         modifiedResponse = modifiedResponse.replace(fullMatch, replacement);
-
-        // Switch to editor view automatically
-        setActiveView('editor');
       } catch (err) {
         console.error('[AskAmo] Failed to save code to editor:', err);
       }
@@ -1757,6 +1775,28 @@ export default function App({ ready = true }: AppProps) {
 
     return { text: modifiedResponse, saved: savedCount > 0 };
   };
+
+  const openCodeInEditor = useCallback(async (code: string, filename: string, autoRun = false) => {
+    const normalizedFileName = filename.trim() || `amo-generated-${Date.now()}.txt`;
+    const normalizedCode = code ?? '';
+
+    try {
+      await workspaceService.saveToWorkspace(normalizedFileName, normalizedCode);
+      
+      // Auto-learn vocabulary from code file
+      void autoLearningService.learnFromFileEdit(normalizedCode, normalizedFileName);
+    } catch (error) {
+      console.warn('[AskAmo] Failed to persist editor code to workspace:', error);
+    }
+
+    setPendingEditorCode({
+      code: normalizedCode,
+      filename: normalizedFileName,
+      autoRun,
+      token: crypto.randomUUID(),
+    });
+    setActiveView('editor');
+  }, []);
 
    const handleSend = async () => {
       if (!inputRef.current.trim() || isLoading) return;
@@ -1903,16 +1943,38 @@ export default function App({ ready = true }: AppProps) {
              return result;
            }
            
-           // Native offline model (llama.cpp via Android JNI)
-           const params = useModelSettingsStore.getState();
-           const prompt = `${systemPrompt}\n\nUser: ${msgs[msgs.length-1]?.content}\nAmo:`;
-           const res = await nativeOfflineLlmService.generate({ 
-             prompt,
-             temperature: params.temperature,
-             top_p: params.topP,
-             max_tokens: params.maxTokens,
-           });
-           return res?.text?.trim() || '';
+            // Native offline model (llama.cpp via Android JNI)
+            const params = useModelSettingsStore.getState();
+            const cache = useResponseCacheStore.getState();
+            
+            // Check cache first
+            const userContent = msgs[msgs.length-1]?.content || '';
+            const cachedResponse = cache.getCache(userContent, selectedModel.id);
+            if (cachedResponse) {
+              console.info('[Cache] Native model cache hit');
+              return cachedResponse;
+            }
+            
+            // Use intent-based prompt compression
+            const intent = classifyIntent(userContent);
+            const { compressPrompt } = await import('./services/nativeAssistantOrchestrator');
+            const compressedPrompt = compressPrompt(userContent, systemPrompt);
+            
+            const prompt = `${compressedPrompt}\n\nUser: ${userContent}\nAmo:`;
+            const res = await nativeOfflineLlmService.generate({ 
+              prompt,
+              temperature: params.temperature,
+              top_p: params.topP,
+              max_tokens: params.maxTokens,
+            });
+            const result = res?.text?.trim() || '';
+            
+            // Cache the response
+            if (result && userContent.length > 10) {
+              cache.setCache(userContent, result, selectedModel.id);
+            }
+            
+            return result;
          };
 
         const loopResult = await runIdeLoop({
@@ -1925,8 +1987,7 @@ export default function App({ ready = true }: AppProps) {
           onViewSwitch: (v) => setActiveView(v as AmoView),
           onWebViewUrl: (url) => setWebViewUrl(url),
           onPreviewFile: (path, content) => {
-            setActiveView('editor');
-            setPendingEditorCode({ code: content, filename: path.split('/').pop() || 'file.txt' });
+            void openCodeInEditor(content, path.split('/').pop() || 'file.txt');
           },
           generate: generateFn,
         });
@@ -2148,11 +2209,31 @@ export default function App({ ready = true }: AppProps) {
       }
     };
 
-    const speak = async (text: string) => {
-      // Chunked TTS for better responsiveness - speak as soon as we have complete sentences
-      if (!text || text.trim().length === 0) {
-        console.log('[Speak] Skipping empty text');
-        return;
+    handleSendRef.current = handleSend;
+
+     const speak = async (text: string) => {
+       // Chunked TTS for better responsiveness - speak as soon as we have complete sentences
+       if (!text || text.trim().length === 0) {
+         console.log('[Speak] Skipping empty text');
+         return;
+       }
+
+       isSpeakingRef.current = true;
+
+       if (nativeTtsService.isAvailable()) {
+         await nativeTtsService.stop().catch(() => undefined);
+       }
+
+       if ('speechSynthesis' in window) {
+         window.speechSynthesis.cancel();
+       }
+
+      // Echo prevention: stop microphone while Amo is speaking
+      const wasListening = isListeningRef.current;
+      if (wasListening) {
+        console.log('[Speak] Stopping mic to prevent echo');
+        nativeSpeechRecognitionService.stop();
+        setIsListening(false);
       }
 
       // Strip markdown symbols and special characters for natural speech
@@ -2197,48 +2278,17 @@ export default function App({ ready = true }: AppProps) {
             console.warn('No suitable native voice found. Available voices:', nativeTtsStatus?.availableVoices);
           }
 
-          // Split text into sentences for more natural chunking
-          const sentenceEndRegex = /[.!?]+/g;
-          const sentences = cleanText.split(sentenceEndRegex);
-          const delimiters = cleanText.match(sentenceEndRegex) || [];
-          
-          // Reconstruct sentences with their delimiters
-          const sentenceChunks: string[] = [];
-          for (let i = 0; i < sentences.length; i++) {
-            let chunk = sentences[i].trim();
-            if (chunk === '' && i < sentences.length - 1) {
-              // Skip empty sentences
-              continue;
-            }
-            if (i < delimiters.length) {
-              chunk += delimiters[i];
-            }
-            if (chunk.length > 0) {
-              sentenceChunks.push(chunk);
-            }
+          const result = await nativeTtsService.speakAndWait({
+            text: cleanText,
+            language: bestVoice?.locale || nativeTtsStatus.language || 'en-US',
+            voiceName: bestVoice?.name,
+          });
+
+          if (result) {
+            return;
           }
 
-          // Speak each sentence chunk with slight delay to avoid audio overlap
-          for (let i = 0; i < sentenceChunks.length; i++) {
-            const chunk = sentenceChunks[i];
-            if (chunk.trim().length > 0) {
-              const result = await nativeTtsService.speak({
-                text: chunk,
-                language: bestVoice?.locale || 'en-NZ',
-                voiceName: bestVoice?.name,
-              });
-              
-              if (!result) {
-                console.error(`Failed to speak chunk ${i + 1}/${sentenceChunks.length}: "${chunk}"`);
-              }
-
-              // Small pause between chunks to prevent audio clipping
-              if (i < sentenceChunks.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 150));
-              }
-            }
-          }
-          return;
+          console.warn('[Speak] Native TTS did not complete cleanly, using fallback');
         }
 
         // Try web SpeechT5 if ready (offline AI model)
@@ -2258,11 +2308,17 @@ export default function App({ ready = true }: AppProps) {
           console.log('[Speak] Using browser-native speechSynthesis API');
           window.speechSynthesis.cancel(); // Cancel any previous speech
 
-          await new Promise<void>((resolve, reject) => {
+          await new Promise<void>((resolve) => {
             const utterance = new SpeechSynthesisUtterance(cleanText);
             utterance.rate = 1.0;
             utterance.pitch = 1.0;
             utterance.volume = 1.0;
+
+            const preferredVoice = getPreferredVoice(window.speechSynthesis.getVoices(), '');
+            if (preferredVoice) {
+              utterance.voice = preferredVoice;
+              utterance.lang = preferredVoice.lang;
+            }
 
             // Timeout after 30 seconds (Chrome/Safari may not fire onend reliably)
             const timeout = setTimeout(() => {
@@ -2290,6 +2346,18 @@ export default function App({ ready = true }: AppProps) {
         console.warn('[Speak] No TTS available on this platform');
       } catch (err) {
         console.error('[Speak] Error in speak function:', err);
+      } finally {
+        isSpeakingRef.current = false;
+        // Echo prevention: restart microphone after Amo finishes speaking
+        if (wasListening && voiceContinuousRef.current && !isVoiceProcessingRef.current) {
+          console.log('[Speak] Restarting mic after speech');
+          setTimeout(() => {
+            if (!nativeSpeechRecognitionService.isActive()) {
+              setIsListening(true);
+              void nativeSpeechRecognitionService.start();
+            }
+          }, 500);
+        }
       }
     };
 
@@ -2342,7 +2410,9 @@ export default function App({ ready = true }: AppProps) {
        }
        return false;
      }
-   };
+    };
+
+    handleVoiceWebSearchRef.current = handleVoiceWebSearch;
 
    const syncUploadedDocsFromStorage = async () => {
     await vectorDbService.loadFromStorage();
@@ -2414,6 +2484,9 @@ export default function App({ ready = true }: AppProps) {
         name: parsed.title || file.name,
         kind: 'document',
       }]);
+
+      // Auto-learn vocabulary from document
+      void autoLearningService.learnFromDocument(parsed.content, parsed.title || file.name, id);
 
       setDownloadStatus(
         `Imported ${parsed.title || file.name} — ` +
@@ -2500,16 +2573,59 @@ export default function App({ ready = true }: AppProps) {
     { id: 'cognition', label: 'Cognition', icon: Brain },
   ];
 
-   const toggleListening = async () => {
+    // Track restart attempts to prevent infinite loops
+    const voiceRestartCountRef = useRef(0);
+    const maxRestartsBeforeReset = 10;
+
+    const restartVoiceListening = useCallback((delay = 500) => {
+      // Clear any pending restart timer
+      if (voiceRestartTimerRef.current) {
+        clearTimeout(voiceRestartTimerRef.current);
+        voiceRestartTimerRef.current = null;
+      }
+
+      // Don't restart if continuous mode is disabled
+      if (!voiceContinuousRef.current || isVoiceProcessingRef.current || isSpeakingRef.current) return;
+
+      // Check if we need to reset the recognizer after too many restarts
+      if (voiceRestartCountRef.current >= maxRestartsBeforeReset) {
+        console.log('[Voice] Resetting recognizer after ' + maxRestartsBeforeReset + ' restarts');
+        voiceRestartCountRef.current = 0;
+        nativeSpeechRecognitionService.abort();
+      }
+
+      voiceRestartTimerRef.current = setTimeout(() => {
+        if (voiceContinuousRef.current && !nativeSpeechRecognitionService.isActive() && !isLoadingRef.current && !isSpeakingRef.current) {
+          console.log('[Voice] Restarting continuous listening (attempt ' + (voiceRestartCountRef.current + 1) + ')');
+          voiceRestartCountRef.current++;
+          setIsListening(true);
+          nativeSpeechRecognitionService.start().catch((err) => {
+            console.error('[Voice] Failed to restart:', err);
+            setIsListening(false);
+            // Try again after a longer delay
+            if (voiceContinuousRef.current) {
+              restartVoiceListening(1000);
+            }
+          });
+        }
+      }, delay);
+    }, []);
+
+    const toggleListening = async () => {
      if (isListening) {
        nativeSpeechRecognitionService.stop();
        setIsListening(false);
+       // Reset restart counter when manually stopping
+       voiceRestartCountRef.current = 0;
        // Clear any pending voice restart timers when stopping
        if (voiceRestartTimerRef.current) {
          clearTimeout(voiceRestartTimerRef.current);
          voiceRestartTimerRef.current = null;
        }
      } else {
+        // Reset restart counter when manually starting
+        voiceRestartCountRef.current = 0;
+
         nativeSpeechRecognitionService.setCallbacks(
           (text: string, isFinal: boolean) => {
             if (!isFinal) {
@@ -2518,61 +2634,111 @@ export default function App({ ready = true }: AppProps) {
             }
              console.log('[Voice] Final:', text);
              if (!text.trim()) {
-               if (!voiceContinuous) {
-                 setIsListening(false);
+               // In continuous mode, restart listening if no speech was detected
+               setIsListening(false);
+               if (voiceContinuousRef.current) {
+                 restartVoiceListening();
                }
+               return;
+             }
+             if (isVoiceProcessingRef.current) {
+               console.log('[Voice] Ignoring transcript while another request is processing');
                return;
              }
              inputRef.current = text;
              setInput(text);
+             // Mark as not actively listening while processing
+             setIsListening(false);
+             isVoiceProcessingRef.current = true;
              requestAnimationFrame(() => {
                requestAnimationFrame(async () => {
-                 // Check if this is a web search query and handle it with voice assist
-                 const isWebQuery = shouldUseWebSearch(text) && navigator.onLine && isWebSearchEnabled;
-                 
-                 if (isWebQuery) {
-                   console.log('[Voice] Web query detected, using voice web assist');
-                   const handled = await handleVoiceWebSearch(text);
-                   
-                   if (handled) {
-                     // Web search was successful, don't send to regular handler
-                     if (!voiceContinuous) {
-                       setIsListening(false);
-                     }
-                     return;
-                   }
-                 }
-                 
-                 // Not a web query or web query failed, use regular handler
-                 await handleSend();
-                 if (!voiceContinuous) {
-                   setIsListening(false);
-                 }
-               });
-             });
+                 try {
+                    // Check if this is a web search query and handle it with voice assist
+                    const isWebQuery = shouldUseWebSearch(text) && navigator.onLine && isWebSearchEnabledRef.current;
+                    
+                    if (isWebQuery) {
+                      console.log('[Voice] Web query detected, using voice web assist');
+                      const handled = await (handleVoiceWebSearchRef.current?.(text) ?? Promise.resolve(false));
+                      
+                      if (handled) {
+                        // Web search was successful
+                        if (voiceContinuousRef.current && !isSpeakingRef.current) {
+                          restartVoiceListening();
+                        }
+                        return;
+                      }
+                    }
+                    
+                    // Not a web query or web query failed, use regular handler
+                    await (handleSendRef.current?.() ?? Promise.resolve());
+                  } catch (err) {
+                    console.error('[Voice] Error in voice handler:', err);
+                  } finally {
+                    isVoiceProcessingRef.current = false;
+                  }
+                  // In continuous mode, restart listening after response
+                  if (voiceContinuousRef.current && !isSpeakingRef.current) {
+                    restartVoiceListening();
+                  }
+                });
+              });
           },
           (error: string) => {
             console.error('[Voice] Error:', error);
-            setError(error);
+            // Don't show "no speech match" errors to user - they're expected in continuous mode
+            if (error !== 'No speech match' && error !== 'Speech timeout') {
+              setError(error);
+            }
             setIsListening(false);
+            isVoiceProcessingRef.current = false;
+            // In continuous mode, try to restart after error (with longer delay for real errors)
+            if (voiceContinuousRef.current) {
+              restartVoiceListening(error === 'No speech match' ? 250 : 1000);
+            }
           }
          );
          // Start speech recognition
          setIsListening(true);
-         await nativeSpeechRecognitionService.start();
-      }
+         try {
+           await nativeSpeechRecognitionService.start();
+         } catch (err) {
+           console.error('[Voice] Failed to start:', err);
+           setIsListening(false);
+           setError('Failed to start voice recognition');
+         }
+       }
     };
 
+    // Only handle manual toggles of continuous mode - inline restarts handle the rest
     useEffect(() => {
-      // Auto-restart voice listening when loading finishes and voiceContinuous is enabled
-      if (!isLoading && voiceContinuous && !isListening && !nativeSpeechRecognitionService.isActive()) {
+      // When continuous mode is enabled and we're not actively listening or processing
+      if (voiceContinuous && !isListening && !isLoading && !nativeSpeechRecognitionService.isActive()) {
+        // Start listening with a delay to avoid conflicts
         const timer = setTimeout(() => {
-          setIsListening(true);
-          void nativeSpeechRecognitionService.start();
-        }, 600);
+          if (voiceContinuousRef.current && !isListeningRef.current && !nativeSpeechRecognitionService.isActive() && !isSpeakingRef.current) {
+            console.log('[Voice] Starting continuous mode via effect');
+            voiceRestartCountRef.current = 0;
+            setIsListening(true);
+            nativeSpeechRecognitionService.start().catch((err) => {
+              console.error('[Voice] Failed to start continuous mode:', err);
+              setIsListening(false);
+            });
+          }
+        }, 300);
         return () => clearTimeout(timer);
       }
-    }, [isLoading, voiceContinuous, isListening]);
+    }, [voiceContinuous]); // Only depend on voiceContinuous to avoid loops
+
+    useEffect(() => () => {
+      if (voiceRestartTimerRef.current) {
+        clearTimeout(voiceRestartTimerRef.current);
+      }
+      void nativeSpeechRecognitionService.abort();
+      void nativeTtsService.stop().catch(() => undefined);
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    }, []);
 
   const handleCopy = (text: string) => navigator.clipboard.writeText(text);
 
@@ -2982,6 +3148,7 @@ export default function App({ ready = true }: AppProps) {
             <div className={activeView === 'editor' ? 'h-full' : 'hidden'}>
               <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
                 <CodeEditor 
+                  key={pendingEditorCode?.token || 'editor-default'}
                   initialCode={pendingEditorCode?.code} 
                   initialFileName={pendingEditorCode?.filename}
                   autoRun={pendingEditorCode?.autoRun}
