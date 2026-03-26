@@ -609,107 +609,103 @@ function SettingsPanel(props: SidebarProps) {
     <>
       <PanelHeader title="Settings" subtitle="App preferences and configuration" />
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
-        <SectionLabel>Behaviour</SectionLabel>
-        <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 divide-y divide-white/[0.06]">
-          <ToggleRow label="Voice mode" description="Speak replies automatically" value={props.isVoiceMode} onToggle={props.onToggleVoiceMode} icon={Mic} />
-          <ToggleRow label="Continuous voice" description="Keep mic open after requests" value={props.voiceContinuous} onToggle={props.onToggleVoiceContinuous} icon={Mic} />
-          <ToggleRow label="Web search" description="Search before answering" value={props.isWebSearchEnabled} onToggle={props.onToggleWebSearch} icon={Search} />
-          <ToggleRow label="Deep think" description="More careful reasoning" value={props.isDeepThinkEnabled} onToggle={props.onToggleDeepThink} icon={Brain} />
-        </div>
-        
-        <SectionLabel>Voice Personality</SectionLabel>
-        <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-3 space-y-2">
-          <div className="text-[10px] text-white/60 mb-2">
-            <div className="flex items-center gap-2 mb-2">
-              <Volume2 className="w-3.5 h-3.5 text-[#ff4e00]" />
-              <span className="font-semibold">Select Amo's personality mode</span>
-            </div>
-            <p className="text-white/40">Changes voice characteristics, speech patterns, and response style</p>
-          </div>
-          <div className="space-y-2">
-            {Object.entries(VOICE_PERSONAS).map(([id, persona]) => (
-              <button
-                key={id}
-                onClick={() => handlePersonaChange(id)}
-                className={cn(
-                  'w-full p-2.5 rounded-lg border text-left transition-all',
-                  activePersona.id === id
-                    ? 'bg-[#ff4e00]/20 border-[#ff4e00]/40'
-                    : 'bg-white/[0.02] border-white/10 hover:border-white/20'
-                )}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className={cn('text-[11px] font-semibold', activePersona.id === id ? 'text-[#ff4e00]' : 'text-white/80')}>
-                      {persona.displayName}
-                    </div>
-                    <div className="text-[9px] text-white/40 mt-0.5 leading-tight">
-                      {persona.description}
-                    </div>
-                  </div>
-                  {activePersona.id === id && (
-                    <div className="text-[9px] font-bold text-[#ff4e00] mt-0.5 shrink-0">ACTIVE</div>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-        
-        <SectionLabel>Model Inference</SectionLabel>
-        <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-3 space-y-4">
-          <div>
-            <div className="flex justify-between text-[10px] text-white/60 mb-1">
-              <span>Temperature</span>
-              <span>{temperature.toFixed(1)}</span>
-            </div>
-            <input
-              type="range"
-              min="0.1"
-              max="1.5"
-              step="0.1"
-              value={temperature}
-              onChange={(e) => setTemperature(Number(e.target.value))}
-              className="w-full accent-[#ff4e00]"
-            />
-            <p className="text-[9px] text-white/40 mt-1">Higher = more creative, Lower = more focused</p>
-          </div>
-          <div>
-            <div className="flex justify-between text-[10px] text-white/60 mb-1">
-              <span>Top P</span>
-              <span>{topP.toFixed(1)}</span>
-            </div>
-            <input
-              type="range"
-              min="0.1"
-              max="1.0"
-              step="0.1"
-              value={topP}
-              onChange={(e) => setTopP(Number(e.target.value))}
-              className="w-full accent-[#ff4e00]"
-            />
-            <p className="text-[9px] text-white/40 mt-1">Nucleus sampling threshold</p>
-          </div>
-          <div>
-            <div className="flex justify-between text-[10px] text-white/60 mb-1">
-              <span>Max Tokens</span>
-              <span>{maxTokens}</span>
-            </div>
-            <input
-              type="range"
-              min="256"
-              max="4096"
-              step="256"
-              value={maxTokens}
-              onChange={(e) => setMaxTokens(Number(e.target.value))}
-              className="w-full accent-[#ff4e00]"
-            />
-            <p className="text-[9px] text-white/40 mt-1">Maximum response length</p>
-          </div>
-        </div>
-
-        <SectionLabel>RAG Retrieval</SectionLabel>
-        <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-3 space-y-3">
+         <SectionLabel>Voice & Personality</SectionLabel>
+         <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 divide-y divide-white/[0.06]">
+           <ToggleRow label="Voice mode" description="Speak replies automatically" value={props.isVoiceMode} onToggle={props.onToggleVoiceMode} icon={Mic} />
+           <ToggleRow label="Continuous voice" description="Keep mic open after requests" value={props.voiceContinuous} onToggle={props.onToggleVoiceContinuous} icon={Mic} />
+           <ToggleRow label="Web search" description="Search before answering" value={props.isWebSearchEnabled} onToggle={props.onToggleWebSearch} icon={Search} />
+           <div className="text-[10px] text-white/60 mb-2">
+             <div className="flex items-center gap-2 mb-2">
+               <Volume2 className="w-3.5 h-3.5 text-[#ff4e00]" />
+               <span className="font-semibold">Select Amo's personality mode</span>
+             </div>
+             <p className="text-white/40">Changes voice characteristics, speech patterns, and response style</p>
+           </div>
+           <div className="space-y-2">
+             {Object.entries(VOICE_PERSONAS).map(([id, persona]) => (
+               <button
+                 key={id}
+                 onClick={() => handlePersonaChange(id)}
+                 className={cn(
+                   'w-full p-2.5 rounded-lg border text-left transition-all',
+                   activePersona.id === id
+                     ? 'bg-[#ff4e00]/20 border-[#ff4e00]/40'
+                     : 'bg-white/[0.02] border-white/10 hover:border-white/20'
+                 )}
+               >
+                 <div className="flex items-start justify-between gap-2">
+                   <div className="flex-1 min-w-0">
+                     <div className={cn('text-[11px] font-semibold', activePersona.id === id ? 'text-[#ff4e00]' : 'text-white/80')}>
+                       {persona.displayName}
+                     </div>
+                     <div className="text-[9px] text-white/40 mt-0.5 leading-tight">
+                       {persona.description}
+                     </div>
+                   </div>
+                   {activePersona.id === id && (
+                     <div className="text-[9px] font-bold text-[#ff4e00] mt-0.5 shrink-0">ACTIVE</div>
+                   )}
+                 </div>
+               </button>
+             ))}
+           </div>
+         </div>
+         
+         <SectionLabel>Model Inference</SectionLabel>
+         <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-3 space-y-4">
+           <div>
+             <div className="flex justify-between text-[10px] text-white/60 mb-1">
+               <span>Temperature</span>
+               <span>{temperature.toFixed(1)}</span>
+             </div>
+             <input
+               type="range"
+               min="0.1"
+               max="1.5"
+               step="0.1"
+               value={temperature}
+               onChange={(e) => setTemperature(Number(e.target.value))}
+               className="w-full accent-[#ff4e00]"
+             />
+             <p className="text-[9px] text-white/40 mt-1">Higher = more creative, Lower = more focused</p>
+           </div>
+           <div>
+             <div className="flex justify-between text-[10px] text-white/60 mb-1">
+               <span>Top P</span>
+               <span>{topP.toFixed(1)}</span>
+             </div>
+             <input
+               type="range"
+               min="0.1"
+               max="1.0"
+               step="0.1"
+               value={topP}
+               onChange={(e) => setTopP(Number(e.target.value))}
+               className="w-full accent-[#ff4e00]"
+             />
+             <p className="text-[9px] text-white/40 mt-1">Nucleus sampling threshold</p>
+           </div>
+           <div>
+             <div className="flex justify-between text-[10px] text-white/60 mb-1">
+               <span>Max Tokens</span>
+               <span>{maxTokens}</span>
+             </div>
+             <input
+               type="range"
+               min="256"
+               max="4096"
+               step="256"
+               value={maxTokens}
+               onChange={(e) => setMaxTokens(Number(e.target.value))}
+               className="w-full accent-[#ff4e00]"
+             />
+             <p className="text-[9px] text-white/40 mt-1">Maximum response length</p>
+           </div>
+           <ToggleRow label="Deep think" description="More careful reasoning" value={props.isDeepThinkEnabled} onToggle={props.onToggleDeepThink} icon={Brain} />
+         </div>
+         
+         <SectionLabel>RAG Retrieval</SectionLabel>
+         <div className="bg-white/[0.03] rounded-xl border border-white/8 px-3 py-3 space-y-3">
           <div>
             <div className="flex justify-between text-[10px] text-white/60 mb-1">
               <span>Chunk Size</span>
