@@ -52,6 +52,7 @@ import { CodeEditor } from './components/CodeEditor';
 import { VocabularyBuilder } from './components/VocabularyBuilder';
 import { SentenceBuilder } from './components/SentenceBuilder';
 import { IntentEnhancer } from './components/IntentEnhancer';
+import { PackageManager } from './components/PackageManager';
 import { motion, AnimatePresence } from 'motion/react';
 import { groqService } from './services/groqService';
 import { openrouterService } from './services/openrouterService';
@@ -136,7 +137,7 @@ type LocalRuntimeState = {
 };
 type AmoView = 'chat' | 'preview' | 'ide' | 'learn' | 'web' | 'settings';
 type IdeTab = 'editor' | 'terminal' | 'files' | 'debug' | 'run';
-type LearnTab = 'vocabulary' | 'sentences' | 'intent' | 'brain' | 'practice';
+type LearnTab = 'vocabulary' | 'sentences' | 'intent' | 'brain' | 'practice' | 'packages';
 type LocalBackendDescriptor = {
   kind: LocalBackendKind;
   label: string;
@@ -3258,6 +3259,7 @@ export default function App({ ready = true }: AppProps) {
                   <button onClick={() => setActiveLearnTab('intent')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeLearnTab === 'intent' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Intent</button>
                   <button onClick={() => setActiveLearnTab('brain')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeLearnTab === 'brain' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Brain</button>
                   <button onClick={() => setActiveLearnTab('practice')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeLearnTab === 'practice' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Practice</button>
+                  <button onClick={() => setActiveLearnTab('packages')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeLearnTab === 'packages' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Packages</button>
                 </div>
               )}
             </div>
@@ -3631,6 +3633,11 @@ export default function App({ ready = true }: AppProps) {
                       </div>
                       <p className="text-xs text-white/40 mt-3">Complete practice activities to track your progress.</p>
                     </div>
+                  </div>
+                )}
+                {activeLearnTab === 'packages' && (
+                  <div className="h-full">
+                    <PackageManager />
                   </div>
                 )}
               </div>
