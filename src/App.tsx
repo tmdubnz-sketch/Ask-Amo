@@ -3265,7 +3265,7 @@ export default function App({ ready = true }: AppProps) {
             </div>
           </div>
 
-         <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
            {activeView === 'chat' && (
              <div className="h-full flex flex-col">
                {(error || downloadStatus) && (
@@ -3303,7 +3303,7 @@ export default function App({ ready = true }: AppProps) {
                  </div>
                )}
 
-               <div className="flex-1 max-w-4xl mx-auto w-full">
+               <div className="flex-1 w-full">
                  {messages.length === 0 ? (
                    <div className="h-full flex flex-col items-center justify-center text-center space-y-6">
                      <div className="w-24 h-24 rounded-[2rem] glass-panel border border-[#ff4e00]/20 flex items-center justify-center animate-float">
@@ -3321,8 +3321,8 @@ export default function App({ ready = true }: AppProps) {
 
             {/* Preview View - dedicated preview panel */}
             {activeView === 'preview' && (
-              <div className="h-full flex flex-col p-4">
-                <div className="flex-1 glass-panel border border-white/10 rounded-2xl overflow-hidden">
+              <div className="h-full flex flex-col">
+                <div className="flex-1">
                   <CodePreview 
                     code={previewContent?.code || ''} 
                     language={previewContent?.language || 'html'} 
@@ -3339,7 +3339,7 @@ export default function App({ ready = true }: AppProps) {
 
             {/* IDE View - Editor + Terminal + Files + Debug + Run */}
             {activeView === 'ide' && (
-              <div className="h-full p-4">
+              <div className="h-full w-full">
                 {activeIdeTab === 'editor' && (
                   <div className="h-full">
                     <CodeEditor 
@@ -3457,7 +3457,7 @@ export default function App({ ready = true }: AppProps) {
 
             {/* Learn View - Vocabulary + Sentences + Intent */}
             {activeView === 'learn' && (
-              <div className="h-full p-4">
+              <div className="h-full w-full">
                 {activeLearnTab === 'vocabulary' && (
                   <div className="h-full">
                     {localStorage.getItem('amo_vocabulary_visited') !== 'true' && (
@@ -3645,18 +3645,15 @@ export default function App({ ready = true }: AppProps) {
 
             {/* Web View */}
             {activeView === 'web' && (
-              <div className="h-full max-w-4xl mx-auto w-full min-h-[420px]">
+              <div className="h-full w-full">
                 <WebBrowser url={webViewUrl} onNavigate={(url) => setWebViewUrl(url)} />
               </div>
             )}
 
             {/* Settings View */}
             {activeView === 'settings' && (
-              <div className="h-full p-4">
-                <div className="max-w-2xl mx-auto space-y-4">
-                  {/* Settings content would go here */}
-                  <h2 className="text-xl font-semibold text-white/90">Settings</h2>
-                  <p className="text-white/60">Configure your Amo preferences.</p>
+              <div className="h-full w-full p-4">
+                <div className="space-y-4">
                 </div>
               </div>
             )}
