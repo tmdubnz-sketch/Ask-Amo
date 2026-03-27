@@ -67,29 +67,14 @@ public class NativeTerminalPlugin extends Plugin {
                     resolvedCwd = workingDir.getAbsolutePath();
                 }
 
-                // Use script command to create PTY, or fallback to simple shell
-                ProcessBuilder pb = new ProcessBuilder();
-                
-                // Try to create PTY with script command (more Unix-like)
-                String scriptCmd = "script -qfc '/bin/sh -i' /dev/null 2>&1";
-                pb.command("/bin/sh", "-c", scriptCmd);
+                // Use interactive shell on Android (no PTY support)
+                ProcessBuilder pb = new ProcessBuilder("/system/bin/sh");
                 pb.directory(workingDir);
                 pb.environment().put("TERM", "xterm-256color");
                 pb.environment().put("HOME", resolvedCwd);
                 pb.redirectErrorStream(true);
                 
-                Process process;
-                try {
-                    process = pb.start();
-                } catch (IOException e) {
-                    // Fallback to simple shell without PTY
-                    pb = new ProcessBuilder("/system/bin/sh");
-                    pb.directory(workingDir);
-                    pb.environment().put("TERM", "xterm-256color");
-                    pb.environment().put("HOME", resolvedCwd);
-                    pb.redirectErrorStream(true);
-                    process = pb.start();
-                }
+                Process process = pb.start();
 
                 SessionData session = new SessionData();
                 session.process = process;
