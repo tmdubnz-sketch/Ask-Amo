@@ -481,7 +481,7 @@ export function Terminal() {
       {/* Terminal container */}
       <div 
         ref={terminalRef} 
-        className="h-full w-full pt-6"
+        className="h-full w-full"
       />
     </div>
   );

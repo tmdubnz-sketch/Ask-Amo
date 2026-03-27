@@ -3358,7 +3358,7 @@ export default function App({ ready = true }: AppProps) {
                   </div>
                 )}
                 {activeIdeTab === 'terminal' && (
-                  <div className="h-full glass-panel border border-white/10 rounded-2xl overflow-hidden">
+                  <div className="h-full">
                     <Terminal />
                   </div>
                 )}
