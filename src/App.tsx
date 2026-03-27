@@ -544,8 +544,7 @@ export default function App({ ready = true }: AppProps) {
    const [toasts, setToasts] = useState<Toast[]>([]);
     const [pendingEditorCode, setPendingEditorCode] = useState<{ code: string; filename: string; autoRun?: boolean; autoPreview?: boolean; token: string } | null>(null);
     const [fileRefreshKey, setFileRefreshKey] = useState(0);
-   const [amoTerminalOutput, setAmoTerminalOutput] = useState<string>('');
-   
+    
   const [brainMemoryRows, setBrainMemoryRows] = useState<ConversationMemoryRow[]>([]);
   const [brainSummaryRows, setBrainSummaryRows] = useState<MemorySummaryRow[]>([]);
   const [toolRegistryRows, setToolRegistryRows] = useState<ToolRegistryRow[]>([]);
@@ -3348,7 +3347,6 @@ export default function App({ ready = true }: AppProps) {
                       autoRun={pendingEditorCode?.autoRun}
                       autoPreview={true}
                       refreshKey={fileRefreshKey}
-                      onOutputCapture={(output) => setAmoTerminalOutput(output)}
                       onGenerate={(prompt) => {
                         setInput(prompt);
                         setActiveView('chat');
@@ -3377,28 +3375,30 @@ export default function App({ ready = true }: AppProps) {
                 {activeIdeTab === 'debug' && (
                   <div className="h-full glass-panel border border-white/10 rounded-2xl overflow-hidden p-6">
                     <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-lg font-semibold text-white/90">Debug Console</h2>
+                      <h2 className="text-lg font-semibold text-white/90">Debug</h2>
                       <button 
-                        onClick={() => setActiveIdeTab('terminal')}
-                        className="px-4 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg transition-all"
+                        onClick={() => setActiveIdeTab('editor')}
+                        className="px-4 py-2 text-sm bg-[#ff4e00] hover:bg-[#ff4e00]/90 text-white rounded-lg transition-all"
                       >
-                        Open Terminal
+                        Open Editor
                       </button>
                     </div>
                     <div className="space-y-3">
                       <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
-                        <div className="text-xs text-white/40 mb-2">Console Output</div>
-                        <div className="font-mono text-sm text-white/70 h-48 overflow-auto custom-scrollbar">
-                          {amoTerminalOutput || 'No output yet. Run code to see results here.'}
+                        <div className="text-xs text-white/40 mb-2">Code Execution</div>
+                        <div className="text-sm text-white/70">
+                          Run code in the <button onClick={() => setActiveIdeTab('editor')} className="text-[#ff4e00] hover:underline">Editor</button> tab to see output in the right panel.
                         </div>
                       </div>
                       <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
                         <div className="text-xs text-white/40 mb-2">Breakpoints</div>
-                        <div className="text-sm text-white/50">No breakpoints set</div>
+                        <div className="text-sm text-white/50">Use browser DevTools for debugging</div>
                       </div>
                       <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
-                        <div className="text-xs text-white/40 mb-2">Variables</div>
-                        <div className="text-sm text-white/50">No variables in scope</div>
+                        <div className="text-xs text-white/40 mb-2">Terminal</div>
+                        <div className="text-sm text-white/70">
+                          Open <button onClick={() => setActiveIdeTab('terminal')} className="text-[#ff4e00] hover:underline">Terminal</button> for shell commands
+                        </div>
                       </div>
                     </div>
                   </div>

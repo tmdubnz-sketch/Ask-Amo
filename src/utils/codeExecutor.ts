@@ -121,9 +121,18 @@ function ensureFrame(): HTMLIFrameElement {
       }
     });
     
-    // Signal ready
+    // Signal ready and set flag on parent frame
     send('ready', null);
+    window.parent.postMessage({ type: 'amo-frame-ready' }, '*');
   <\/script></head><body></body></html>`;
+
+  // Listen for frame-ready confirmation
+  window.addEventListener('message', function onReady(e) {
+    if (e.data?.type === 'amo-frame-ready') {
+      (execFrame as any)._ready = true;
+      window.removeEventListener('message', onReady);
+    }
+  });
 
   document.body.appendChild(execFrame);
 
@@ -174,6 +183,7 @@ export async function executeJavaScript(code: string): Promise<ExecutionResult> 
   return new Promise((resolve) => {
     const frame = ensureFrame();
     let completed = false;
+    let isReady = false;
     
     // Timeout after 10 seconds
     const timeout = setTimeout(() => {
@@ -194,6 +204,11 @@ export async function executeJavaScript(code: string): Promise<ExecutionResult> 
       const { type, data } = e.data.payload;
 
       switch (type) {
+        case 'ready':
+          isReady = true;
+          // Now send the code
+          frame.contentWindow?.postMessage({ type: 'amo-run', code }, '*');
+          break;
         case 'log':
         case 'info':
           outputs.push(data);
@@ -226,8 +241,10 @@ export async function executeJavaScript(code: string): Promise<ExecutionResult> 
 
     window.addEventListener('message', handler);
 
-    // Send code to iframe
-    frame.contentWindow?.postMessage({ type: 'amo-run', code }, '*');
+    // If frame already ready, send immediately
+    if ((frame as any)._ready) {
+      frame.contentWindow?.postMessage({ type: 'amo-run', code }, '*');
+    }
   });
 }
 
@@ -301,6 +318,32 @@ export async function executeShell(code: string): Promise<ExecutionResult> {
   }
 }
 
+export async function executeJson(code: string): Promise<ExecutionResult> {
+  try {
+    const parsed = JSON.parse(code);
+    return {
+      success: true,
+      output: JSON.stringify(parsed, null, 2),
+      method: 'sandbox',
+    };
+  } catch (err) {
+    return {
+      success: false,
+      output: '',
+      error: err instanceof Error ? `Invalid JSON: ${err.message}` : 'Invalid JSON',
+      method: 'sandbox',
+    };
+  }
+}
+
+export async function executeMarkup(code: string, language: string): Promise<ExecutionResult> {
+  return {
+    success: true,
+    output: `${language.toUpperCase()} is display-oriented. Use Preview to render it, or Save to keep it in the workspace.`,
+    method: 'sandbox',
+  };
+}
+
 // ── UNIFIED EXECUTOR ──────────────────────────────────────────────────────────
 
 export type Language = 'javascript' | 'typescript' | 'python' | 'shell' | string;
@@ -327,11 +370,20 @@ export async function executeCode(code: string, language: Language): Promise<Exe
     case 'sh':
       return executeShell(code);
 
+    case 'json':
+      return executeJson(code);
+
+    case 'html':
+    case 'css':
+    case 'markdown':
+    case 'md':
+      return executeMarkup(code, lang);
+
     default:
       return {
         success: false,
         output: '',
-        error: `Language '${language}' is not supported.\nSupported: JavaScript, TypeScript, Python, Shell`,
+        error: `Language '${language}' is not supported.\nSupported: JavaScript, TypeScript, Python, Shell, JSON, HTML, CSS, Markdown`,
         method: 'sandbox',
       };
   }
