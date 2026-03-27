@@ -635,7 +635,12 @@ export default function App({ ready = true }: AppProps) {
         setDownloadStatus('Initializing workspace...');
         try {
           await workspaceService.init();
-          setCurrentWorkspace(workspaceService.getCurrentWorkspace());
+          const ws = workspaceService.getCurrentWorkspace();
+          setCurrentWorkspace(ws);
+          if (ws) {
+            const amoContent = await workspaceService.readAmoConfig();
+            setAmoConfigContent(amoContent);
+          }
           console.log('[AskAmo] ✓ Workspace service initialized');
         } catch (stepError) {
           errorCount++;
@@ -1000,6 +1005,22 @@ export default function App({ ready = true }: AppProps) {
     }
   };
 
+  const loadAmoConfig = async (workspace: Workspace) => {
+    try {
+      workspaceService.switchWorkspace(workspace.id);
+      setCurrentWorkspace(workspace);
+      const content = await workspaceService.readAmoConfig();
+      setAmoConfigContent(content);
+    } catch (e) {
+      console.error('Failed to load AMO.md:', e);
+      setAmoConfigContent(null);
+    }
+  };
+
+  const handleSwitchProject = () => {
+    // This will be handled by the ProjectSelector modal
+  };
+
   const handleResetBrain = async () => {
     try {
       setDownloadStatus('Resetting brain...');
@@ -1125,6 +1146,7 @@ export default function App({ ready = true }: AppProps) {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isSavingBeforeReset, setIsSavingBeforeReset] = useState(false);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+  const [amoConfigContent, setAmoConfigContent] = useState<string | null>(null);
 
   const handleRestoreDefaultBrain = async () => {
     setShowResetConfirm(true);
@@ -1937,6 +1959,10 @@ export default function App({ ready = true }: AppProps) {
         // The coordinator's instantReply is passed as context, not a substitute for action
 
         const history = messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+        
+        // Get workspace AMO.md context
+        const workspaceContext = amoConfigContent ? `\n\n## Workspace Context (from AMO.md)\n${amoConfigContent}` : '';
+        
         const bundle = await assistantRuntimeService.buildContextBundle({
           scope: `chat:${currentChatId}`,
           userInput: enrichedQuery,
@@ -1945,7 +1971,7 @@ export default function App({ ready = true }: AppProps) {
           webContext: undefined,
         }).catch(() => ({ combinedContext: '', knowledgeContext: '', memoryContext: '', webContext: '', intent: 'task', recentTurns: '' }));
 
-        bundle.combinedContext = [promptHint, toolResult.contextBlock, bundle.combinedContext].filter(Boolean).join('\n\n');
+        bundle.combinedContext = [promptHint, workspaceContext, toolResult.contextBlock, bundle.combinedContext].filter(Boolean).join('\n\n');
 
          const template = matchTaskTemplate(userPrompt);
         const taskInput = template ? `${userPrompt}\n\nPlan:\n${template}` : userPrompt;
@@ -3349,6 +3375,8 @@ export default function App({ ready = true }: AppProps) {
                       autoRun={pendingEditorCode?.autoRun}
                       autoPreview={true}
                       refreshKey={fileRefreshKey}
+                      currentWorkspace={currentWorkspace}
+                      onSwitchProject={handleSwitchProject}
                       onGenerate={(prompt) => {
                         setInput(prompt);
                         setActiveView('chat');
@@ -3363,8 +3391,7 @@ export default function App({ ready = true }: AppProps) {
                   </div>
                 )}
                 {activeIdeTab === 'files' && (
-                  <div className="h-full glass-panel border border-white/10 rounded-2xl overflow-hidden p-4">
-                    <h3 className="text-sm font-medium text-white/80 mb-4">Files</h3>
+                  <div className="h-full w-full">
                     <FileTree
                       onFileSelect={(path, content) => {
                         setPendingEditorCode({ code: content, filename: path, token: crypto.randomUUID() });

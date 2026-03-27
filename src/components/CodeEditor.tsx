@@ -10,6 +10,9 @@ import {
   Sparkles,
   Trash2,
   Eye,
+  ChevronLeft,
+  ChevronRight,
+  Folder,
 } from 'lucide-react';
 import { CodePreview } from './CodePreview';
 import { EditorState } from '@codemirror/state';
@@ -21,7 +24,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-import { workspaceService } from '../services/workspaceService';
+import { workspaceService, type Workspace } from '../services/workspaceService';
 import { executeCode } from '../utils/codeExecutor';
 import { FileTree, getLanguageFromPath } from './FileTree';
 import { cn } from '../lib/utils';
@@ -60,6 +63,8 @@ interface CodeEditorProps {
   autoPreview?: boolean;
   onOutputCapture?: (output: string) => void;
   refreshKey?: number | string;
+  currentWorkspace?: Workspace | null;
+  onSwitchProject?: () => void;
 }
 
 const LANGUAGE_EXTENSIONS: Record<string, CodeLanguage> = {
@@ -150,6 +155,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   autoPreview = false,
   onOutputCapture,
   refreshKey,
+  currentWorkspace,
+  onSwitchProject,
 }) => {
   const [code, setCode] = useState(initialCode);
   const [suggestedCode, setSuggestedCode] = useState<string | null>(initialSuggestedCode || null);
@@ -356,8 +363,26 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 
   return (
     <div className="h-full flex flex-col gap-3">
+      {/* Project/Workspace Header */}
+      {currentWorkspace && (
+        <div className="flex items-center gap-2 text-xs">
+          <Folder className="w-4 h-4 text-[#ff4e00]" />
+          <span className="text-white/70">{currentWorkspace.name}</span>
+          <span className="text-white/30">/</span>
+          <span className="text-white/40 truncate">{currentWorkspace.path}</span>
+          {onSwitchProject && (
+            <button
+              onClick={onSwitchProject}
+              className="ml-2 px-2 py-0.5 text-[10px] text-[#ff4e00] hover:bg-[#ff4e00]/10 rounded transition-all"
+            >
+              Switch
+            </button>
+          )}
+        </div>
+      )}
+      
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 glass-panel border border-white/10 rounded-xl px-3 py-2">
+        <div className="flex items-center gap-2 border border-white/10 rounded-xl px-3 py-2">
           <FileCode className="w-4 h-4 text-[#ff4e00]" />
           <input
             type="text"
@@ -368,7 +393,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           />
         </div>
         
-        <div className="glass-panel border border-white/10 rounded-xl px-3 py-2">
+        <div className="border border-white/10 rounded-xl px-3 py-2">
           <span className="text-xs text-white/50">Language:</span>
           <span className="text-sm text-[#ff4e00] ml-2 font-medium">{LANGUAGE_LABELS[language]}</span>
         </div>
@@ -380,11 +405,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
               "p-2 rounded-lg border transition-all",
               showFileTree 
                 ? "bg-[#ff4e00]/20 border-[#ff4e00]/30 text-[#ff4e00]"
-                : "glass-panel border-white/10 text-white/60 hover:text-white hover:border-white/20"
+                : "border-white/10 text-white/60 hover:text-white hover:border-white/20"
             )}
             title="Toggle file tree"
           >
-            <FolderOpen className="w-4 h-4" />
+            {showFileTree ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
 
            <button
@@ -403,7 +428,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 
           <button
             onClick={handleCopy}
-            className="p-2 rounded-lg glass-panel border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all"
+            className="p-2 rounded-lg border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all"
             title="Copy code"
           >
             {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
@@ -411,7 +436,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           
           <button
             onClick={handleClear}
-            className="p-2 rounded-lg glass-panel border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all"
+            className="p-2 rounded-lg border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all"
             title="Clear code"
           >
             <Trash2 className="w-4 h-4" />
@@ -424,7 +449,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 "p-2 rounded-lg border transition-all",
                 showPreview
                   ? "bg-blue-600/20 border-blue-500/30 text-blue-400"
-                  : "glass-panel border-white/10 text-white/60 hover:text-white hover:border-white/20"
+                  : "border-white/10 text-white/60 hover:text-white hover:border-white/20"
               )}
               title="Toggle preview"
             >
