@@ -71,6 +71,7 @@ import { normalizeTranscriptText, routeUserIntent } from './services/intentRoute
 import { nativeChatSessionService } from './services/nativeChatSessionService';
 import { nativeAssistantOrchestrator } from './services/nativeAssistantOrchestrator';
 import { buildDeterministicReply } from './services/nativeReplyCoordinator';
+import { sentenceBuilderService } from './services/sentenceBuilderService';
 import {
   type NativeOfflineDownloadAuthStatus,
   type NativeOfflineModelInfo,
@@ -82,6 +83,8 @@ import { useModelSettingsStore } from './stores/modelSettingsStore';
 import { MessageList } from './components/MessageList';
 import { AmoAvatar } from './components/AmoAvatar';
 import { Sidebar, type SidebarTab } from './components/Sidebar';
+import { CodePreview } from './components/CodePreview';
+import { FileTree } from './components/FileTree';
 import { AMO_STARTER_PACKS } from './data/amoStarterPacks';
 import { amoToolCoordinator } from './services/amoToolCoordinator';
 import { isIdeIntent } from './services/amoIdePrompt';
@@ -96,6 +99,7 @@ import { cn } from './lib/utils';
 import { voicePersonaService } from './services/voicePersonaService';
 import { useResponseCacheStore } from './stores/responseCacheStore';
 import { classifyIntent } from './services/intentClassifierService';
+import { inworldService } from './services/inworldService';
 import { autoLearningService } from './services/autoLearningService';
 
 type SettingsSection = 'general' | 'models' | 'knowledge' | 'workspace' | 'cognition';
@@ -130,7 +134,9 @@ type LocalRuntimeState = {
   activeBackendModelId: string | null;
   reason: string | null;
 };
-type AmoView = 'chat' | 'webview' | 'terminal' | 'editor' | 'vocabulary' | 'sentence-builder' | 'intent-enhancer';
+type AmoView = 'chat' | 'preview' | 'ide' | 'learn' | 'web' | 'settings';
+type IdeTab = 'editor' | 'terminal' | 'files' | 'debug' | 'run';
+type LearnTab = 'vocabulary' | 'sentences' | 'intent' | 'brain' | 'practice';
 type LocalBackendDescriptor = {
   kind: LocalBackendKind;
   label: string;
@@ -489,13 +495,15 @@ export default function App({ ready = true }: AppProps) {
   const [openAiApiKey, setOpenAiApiKey] = useState(() => apiKeyStorage.get('openai'));
   const [geminiApiKey, setGeminiApiKey] = useState(() => apiKeyStorage.get('gemini'));
   const [mistralApiKey, setMistralApiKey] = useState(() => apiKeyStorage.get('mistral'));
+  const [inworldApiKey, setInworldApiKey] = useState(() => apiKeyStorage.get('inworld'));
   const [areApiKeysHydrated, setAreApiKeysHydrated] = useState(() => apiKeyStorage.isHydrated());
-  const [visibleApiKeys, setVisibleApiKeys] = useState<Record<'groq' | 'openrouter' | 'openai' | 'gemini' | 'mistral', boolean>>({
+  const [visibleApiKeys, setVisibleApiKeys] = useState<Record<'groq' | 'openrouter' | 'openai' | 'gemini' | 'mistral' | 'inworld', boolean>>({
     groq: false,
     openrouter: false,
     openai: false,
     gemini: false,
     mistral: false,
+    inworld: false,
   });
   
   const [isVoiceMode, setIsVoiceMode] = useState(() => {
@@ -526,12 +534,16 @@ export default function App({ ready = true }: AppProps) {
    const [isLoading, setIsLoading] = useState(false);
    const [isInitializing, setIsInitializing] = useState(true);
    const [input, setInput] = useState('');
-   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-   const [activeView, setActiveView] = useState<AmoView>('chat');
-   const [webViewUrl, setWebViewUrl] = useState('amo://dashboard');
+    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [activeView, setActiveView] = useState<AmoView>('chat');
+    const [activeIdeTab, setActiveIdeTab] = useState<IdeTab>('editor');
+    const [activeLearnTab, setActiveLearnTab] = useState<LearnTab>('vocabulary');
+    const [previewContent, setPreviewContent] = useState<{ code: string; language: string } | null>(null);
+    const [webViewUrl, setWebViewUrl] = useState('amo://dashboard');
    const [isWebAssistActive, setIsWebAssistActive] = useState(false);
    const [toasts, setToasts] = useState<Toast[]>([]);
-   const [pendingEditorCode, setPendingEditorCode] = useState<{ code: string; filename: string; autoRun?: boolean; token: string } | null>(null);
+    const [pendingEditorCode, setPendingEditorCode] = useState<{ code: string; filename: string; autoRun?: boolean; autoPreview?: boolean; token: string } | null>(null);
+    const [fileRefreshKey, setFileRefreshKey] = useState(0);
    const [amoTerminalOutput, setAmoTerminalOutput] = useState<string>('');
    
   const [brainMemoryRows, setBrainMemoryRows] = useState<ConversationMemoryRow[]>([]);
@@ -593,6 +605,7 @@ export default function App({ ready = true }: AppProps) {
   useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('openai', openAiApiKey); }, [areApiKeysHydrated, openAiApiKey]);
   useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('gemini', geminiApiKey); }, [areApiKeysHydrated, geminiApiKey]);
   useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('mistral', mistralApiKey); }, [areApiKeysHydrated, mistralApiKey]);
+  useEffect(() => { if (areApiKeysHydrated) apiKeyStorage.set('inworld', inworldApiKey); }, [areApiKeysHydrated, inworldApiKey]);
 
   useEffect(() => {
     if (!ready) return;
@@ -1222,7 +1235,8 @@ export default function App({ ready = true }: AppProps) {
 
   const handleRunQuickCommand = async (cmd: string, switchToTerminal = true) => {
     if (switchToTerminal) {
-      setActiveView('terminal');
+      setActiveView('ide');
+      setActiveIdeTab('terminal');
     }
     setInput(cmd);
     inputRef.current = cmd;
@@ -1300,6 +1314,7 @@ export default function App({ ready = true }: AppProps) {
   const hasOpenAiApiKey = Boolean(openAiApiKey || import.meta.env.VITE_OPENAI_API_KEY);
   const hasOpenRouterApiKey = Boolean(openRouterApiKey || import.meta.env.VITE_OPENROUTER_API_KEY);
   const hasMistralApiKey = Boolean(mistralApiKey || import.meta.env.VITE_MISTRAL_API_KEY);
+  const hasInworldApiKey = Boolean(inworldApiKey || import.meta.env.VITE_INWORLD_API_KEY);
 
   const [selectedModel, setSelectedModel] = useState<ModelConfig>(() => {
     const savedModelId = localStorage.getItem('amo_selected_model_id');
@@ -1613,26 +1628,42 @@ export default function App({ ready = true }: AppProps) {
     }
   };
 
-  const handleCancelThinking = async () => {
-    if (!isLoading) return;
-    const requestId = activeRequestIdRef.current;
-    canceledRequestIdsRef.current.add(requestId);
-    setIsLoading(false);
-    setAmoRuntimeState('waiting');
-    setIsWebAssistActive(false);
+    const handleCancelThinking = async () => {
+       if (!isLoading) return;
+       const requestId = activeRequestIdRef.current;
+       canceledRequestIdsRef.current.add(requestId);
+       setIsLoading(false);
+       setAmoRuntimeState('waiting');
+       setIsWebAssistActive(false);
+       
+       try {
+         await nativeTtsService.stop();
+       } catch (error) {
+         console.warn('[AskAmo] Failed to stop voice output during cancel', error);
+       }
+       
+       const assistantId = activeAssistantMessageIdRef.current;
+       if (assistantId) {
+         updateMessage(assistantId, 'Stopped. You can type again now.', false);
+         finalizeMessage(assistantId);
+       }
+     };
 
-    try {
-      await nativeTtsService.stop();
-    } catch (error) {
-      console.warn('[AskAmo] Failed to stop voice output during cancel', error);
-    }
-
-    const assistantId = activeAssistantMessageIdRef.current;
-    if (assistantId) {
-      updateMessage(assistantId, 'Stopped. You can type again now.', false);
-      finalizeMessage(assistantId);
-    }
-  };
+      const handleUseCodeInEditor = (code: string) => {
+        // Switch to IDE view and editor tab
+        setActiveView('ide');
+        setActiveIdeTab('editor');
+        // Small delay to ensure view switch completes
+        setTimeout(() => {
+          // Use the existing pendingEditorCode mechanism
+          setPendingEditorCode({
+            code: code,
+            filename: `generated_${Date.now()}.txt`,
+            autoRun: false,
+            token: crypto.randomUUID()
+          });
+        }, 300);
+      };
 
   const resolveWebAssistContext = async (userPrompt: string): Promise<string | undefined> => {
     const isNativeModel = selectedModel.family === 'native';
@@ -1776,12 +1807,13 @@ export default function App({ ready = true }: AppProps) {
     return { text: modifiedResponse, saved: savedCount > 0 };
   };
 
-  const openCodeInEditor = useCallback(async (code: string, filename: string, autoRun = false) => {
+  const openCodeInEditor = useCallback(async (code: string, filename: string, autoRun = false, autoPreview = false) => {
     const normalizedFileName = filename.trim() || `amo-generated-${Date.now()}.txt`;
     const normalizedCode = code ?? '';
 
     try {
       await workspaceService.saveToWorkspace(normalizedFileName, normalizedCode);
+      setFileRefreshKey(k => k + 1);
       
       // Auto-learn vocabulary from code file
       void autoLearningService.learnFromFileEdit(normalizedCode, normalizedFileName);
@@ -1793,9 +1825,11 @@ export default function App({ ready = true }: AppProps) {
       code: normalizedCode,
       filename: normalizedFileName,
       autoRun,
+      autoPreview,
       token: crypto.randomUUID(),
     });
-    setActiveView('editor');
+    setActiveView('ide');
+    setActiveIdeTab('editor');
   }, []);
 
    const handleSend = async () => {
@@ -1913,7 +1947,7 @@ export default function App({ ready = true }: AppProps) {
 
         bundle.combinedContext = [promptHint, toolResult.contextBlock, bundle.combinedContext].filter(Boolean).join('\n\n');
 
-        const template = matchTaskTemplate(userPrompt);
+         const template = matchTaskTemplate(userPrompt);
         const taskInput = template ? `${userPrompt}\n\nPlan:\n${template}` : userPrompt;
 
          const generateFn = async (msgs: Array<{role: string; content: string}>, systemPrompt: string): Promise<string> => {
@@ -1921,60 +1955,60 @@ export default function App({ ready = true }: AppProps) {
              let result = '';
              const handler = (t: string) => { result = t; };
              
-             switch (selectedModel.family) {
-               case 'groq':
-                 result = await groqService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                 break;
-               case 'openai':
-                 result = await openaiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                 break;
-               case 'gemini':
-                 result = await geminiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                 break;
-               case 'openrouter':
-                 result = await openrouterService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                 break;
-               case 'mistral':
-                 result = await mistralService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled });
-                 break;
-               default:
-                 throw new Error(`Unsupported cloud model family: ${selectedModel.family}`);
-             }
+              switch (selectedModel.family) {
+                case 'groq':
+                  result = await groqService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled, webContext: bundle.webContext });
+                  break;
+                case 'openai':
+                  result = await openaiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled, webContext: bundle.webContext });
+                  break;
+                case 'gemini':
+                  result = await geminiService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled, webContext: bundle.webContext });
+                  break;
+                case 'openrouter':
+                  result = await openrouterService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled, webContext: bundle.webContext });
+                  break;
+                case 'mistral':
+                  result = await mistralService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { deepThink: isDeepThinkEnabled, webContext: bundle.webContext });
+                  break;
+                case 'inworld':
+                  result = await inworldService.generate(selectedModel.id, msgs as any, 'Amo', handler, systemPrompt, { webContext: bundle.webContext });
+                  break;
+                default:
+                  throw new Error(`Unsupported cloud model family: ${selectedModel.family}`);
+              }
              return result;
            }
            
-            // Native offline model (llama.cpp via Android JNI)
+            // Native offline model (llama.cpp via Android JNI) - now using IDE loop for tool usage
             const params = useModelSettingsStore.getState();
-            const cache = useResponseCacheStore.getState();
             
-            // Check cache first
-            const userContent = msgs[msgs.length-1]?.content || '';
-            const cachedResponse = cache.getCache(userContent, selectedModel.id);
-            if (cachedResponse) {
-              console.info('[Cache] Native model cache hit');
-              return cachedResponse;
-            }
-            
-            // Use intent-based prompt compression
-            const intent = classifyIntent(userContent);
-            const { compressPrompt } = await import('./services/nativeAssistantOrchestrator');
-            const compressedPrompt = compressPrompt(userContent, systemPrompt);
-            
-            const prompt = `${compressedPrompt}\n\nUser: ${userContent}\nAmo:`;
-            const res = await nativeOfflineLlmService.generate({ 
-              prompt,
-              temperature: params.temperature,
-              top_p: params.topP,
-              max_tokens: params.maxTokens,
+            // Use the same IDE loop as cloud models for consistent tool usage
+            const loopResult = await runIdeLoop({
+              chatId: currentChatId,
+              userInput: taskInput,
+              baseContext: bundle.combinedContext,
+              isRequestCanceled: () => isRequestCanceled(requestId),
+              onPartialReply: (text) => { if (!isRequestCanceled(requestId)) updateMessage(assistantId, text, false); },
+              onStatus: (s) => { console.info('[IDE]', s); },
+              onViewSwitch: (v) => setActiveView(v as AmoView),
+              onWebViewUrl: (url) => setWebViewUrl(url),
+              onPreviewFile: (path, content) => {
+                const filename = path.split('/').pop() || 'file.txt';
+                const isPreviewable = /\.(html?|css|js|ts|jsx|tsx)$/i.test(filename);
+                void openCodeInEditor(content, filename, false, isPreviewable);
+              },
+              generate: generateFn,
             });
-            const result = res?.text?.trim() || '';
             
-            // Cache the response
-            if (result && userContent.length > 10) {
-              cache.setCache(userContent, result, selectedModel.id);
+            if (!isRequestCanceled(requestId)) {
+              updateMessage(assistantId, loopResult.finalReply, false);
+              finalizeMessage(assistantId);
+              await persistExchangeToBrain(userPrompt, loopResult.finalReply);
+              if (isVoiceModeRef.current) void speak(loopResult.finalReply);
             }
             
-            return result;
+            return loopResult.finalReply || '';
          };
 
         const loopResult = await runIdeLoop({
@@ -2013,15 +2047,33 @@ export default function App({ ready = true }: AppProps) {
         return;
       }
 
-      // Check for deterministic replies first to avoid unnecessary processing
+        // Check for deterministic replies first to avoid unnecessary processing
       const deterministic = buildDeterministicReply(userPrompt);
       if (deterministic !== null) {
         addMessage('user', userPrompt, pendingImage || undefined);
         const assistantId = addStreamingMessage('assistant');
         activeAssistantMessageIdRef.current = assistantId;
         
-        // Include follow-up question if available
         let fullReply = deterministic.reply;
+        
+        // Generate sentences via sentence builder if requested
+        if (deterministic.useSentenceBuilder && deterministic.sentenceIntent) {
+          try {
+            const sentences = await sentenceBuilderService.generateSentence({
+              intent: deterministic.sentenceIntent,
+              style: 'casual',
+              complexity: 'moderate',
+            });
+            const altSentences = sentences.alternatives || [];
+            const allSentences = [sentences.text, ...altSentences.slice(0, 2)].filter(Boolean);
+            const sentenceList = allSentences.map((s, i) => `${i + 1}. ${s}`).join('\n');
+            fullReply += `\n\n${sentenceList}`;
+          } catch (err) {
+            console.error('[App] Sentence builder error:', err);
+          }
+        }
+        
+        // Include follow-up question if available
         if (deterministic.followUp) {
           fullReply += `\n\n${deterministic.followUp}`;
         }
@@ -2035,14 +2087,14 @@ export default function App({ ready = true }: AppProps) {
         if (deterministic.actions) {
           for (const action of deterministic.actions) {
             switch (action) {
-              case 'switch_to_terminal': setActiveView('terminal'); break;
-              case 'switch_to_editor': setActiveView('editor'); break;
-              case 'switch_to_webview': setActiveView('webview'); break;
-              case 'switch_to_vocabulary': setActiveView('vocabulary'); break;
-              case 'switch_to_sentence_builder': setActiveView('sentence-builder'); break;
-              case 'switch_to_intent_enhancer': setActiveView('intent-enhancer'); break;
-              case 'switch_to_settings': setIsSettingsOpen(true); break;
-              case 'list_files': handleRunQuickCommand('ls -la'); break;
+              case 'switch_to_terminal': setActiveView('ide'); setActiveIdeTab('terminal'); break;
+              case 'switch_to_editor': setActiveView('ide'); setActiveIdeTab('editor'); break;
+              case 'switch_to_webview': setActiveView('web'); break;
+              case 'switch_to_vocabulary': setActiveView('learn'); setActiveLearnTab('vocabulary'); break;
+              case 'switch_to_sentence_builder': setActiveView('learn'); setActiveLearnTab('sentences'); break;
+              case 'switch_to_intent_enhancer': setActiveView('learn'); setActiveLearnTab('intent'); break;
+              case 'switch_to_settings': setActiveView('settings'); break;
+              case 'list_files': setActiveView('ide'); setActiveIdeTab('files'); break;
               case 'show_brain_status': handleRunQuickCommand('show brain status'); break;
               case 'enable_voice': setIsVoiceMode(true); break;
               case 'clear_chat': clearChat(); break;
@@ -2111,11 +2163,31 @@ export default function App({ ready = true }: AppProps) {
                   speechBuffer += newText;
                   lastSpokenLength = text.length;
                   
-                  // Check for sentence boundaries
-                  const sentenceMatch = speechBuffer.match(/^(.+?[.!?]+)\s*/);
+                  // Clean speech buffer of code and symbols before speaking
+                  const cleanedBuffer = speechBuffer
+                    .replace(/```[\s\S]*?```/g, '')  // Code blocks - skip entirely
+                    .replace(/`[^`]+`/g, '')  // Inline code - skip
+                    .replace(/\*\*([^*]+)\*\*/g, '$1')  // Bold
+                    .replace(/\*([^*]+)\*/g, '$1')  // Italic
+                    .replace(/#{1,6}\s*/g, '')  // Headers
+                    .replace(/^[-•*]\s*/gm, '')  // List markers
+                    .replace(/^\d+\.\s*/gm, '')  // Numbered lists
+                    .replace(/\|/g, ' ')  // Table pipes
+                    .replace(/[{}[\]();]/g, ' ')  // Brackets and semicolons
+                    .replace(/->/g, ' to ')
+                    .replace(/<-/g, ' from ')
+                    .replace(/!=/g, ' not equal ')
+                    .replace(/==/g, ' equals ')
+                    .replace(/[✓✔✗✘]/g, '')  // Check marks
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                  
+                  // Check for sentence boundaries in cleaned text
+                  const sentenceMatch = cleanedBuffer.match(/^(.+?[.!?]+)\s*/);
                   if (sentenceMatch) {
                     const sentence = sentenceMatch[1].trim();
-                    if (sentence.length > 5) {
+                    // Only speak if meaningful content and not mostly symbols
+                    if (sentence.length > 8 && !/^[\s\[\].,!?]+$/.test(sentence) && !/[~^`#]/.test(sentence)) {
                       speak(sentence);
                     }
                     speechBuffer = speechBuffer.slice(sentenceMatch[0].length);
@@ -2151,6 +2223,11 @@ export default function App({ ready = true }: AppProps) {
               case 'mistral':
                 reply = await mistralService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
                   deepThink: isDeepThinkEnabled,
+                  webContext: webSearchContext,
+                });
+                break;
+              case 'inworld':
+                reply = await inworldService.generate(runtimeModel.id, cloudMessages, 'Amo', handleCloudUpdate, bundle.combinedContext, {
                   webContext: webSearchContext,
                 });
                 break;
@@ -2245,23 +2322,86 @@ export default function App({ ready = true }: AppProps) {
 
       // Strip markdown symbols and special characters for natural speech
       const stripSymbolsForSpeech = (input: string): string => {
-        return input
-          .replace(/```[\s\S]*?```/g, '[code block]')      // Code blocks → placeholder
-          .replace(/`([^`]+)`/g, '$1')                       // Inline code → text
+        let result = input;
+        
+        // Replace code blocks with indication (don't speak code)
+        const codeBlockMatches = result.match(/```[\s\S]*?```/g) || [];
+        const hasCode = codeBlockMatches.length > 0;
+        result = result
+          .replace(/```[\s\S]*?```/g, hasCode ? ' Here is the code. ' : '')      // Code blocks → indication
+        
+        // Handle inline code
+        result = result
+          .replace(/`([^`]+)`/g, (match, code) => {
+            // Don't speak variable names or symbols, just say "variable" or skip
+            if (/^[\W]+$/.test(code)) return '';  // Just symbols
+            if (/^[a-z_][a-z0-9_]*$/i.test(code)) return `the variable ${code}`;  // Variables
+            return code;  // Regular text
+          })
+          
+          // Remove speech quotes entirely - just speak the content
+          .replace(/[""'']/g, '')
+          
+          // Clean markdown formatting
           .replace(/\*\*([^*]+)\*\*/g, '$1')                 // Bold → text
           .replace(/\*([^*]+)\*/g, '$1')                     // Italic → text
           .replace(/#{1,6}\s*/g, '')                         // Headers → text
           .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')          // Links → text only
-          .replace(/→/g, 'then')                             // Arrows → words
-          .replace(/←/g, 'from')
-          .replace(/•/g, '')                                 // Bullets → remove
-          .replace(/✓/g, 'done')                             // Checkmarks
-          .replace(/✗/g, 'failed')                           // X marks
-          .replace(/├──|└──|│/g, '')                         // Tree chars
-          .replace(/\|/g, ' ')                               // Pipes
-          .replace(/[_~^>]/g, '')                            // Other markdown
-          .replace(/\s+/g, ' ')                              // Collapse whitespace
+          .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')        // Reference links → text
+          
+          // Convert symbols to words naturally
+          .replace(/→/g, ' then ')
+          .replace(/←/g, ' from ')
+          .replace(/->/g, ' to ')
+          .replace(/<-/g, ' from ')
+          .replace(/>=/g, ' greater or equal ')
+          .replace(/<=/g, ' less or equal ')
+          .replace(/!=/g, ' not equal ')
+          .replace(/===/g, ' equals ')
+          .replace(/==/g, ' equals ')
+          .replace(/&&/g, ' and ')
+          .replace(/\|\|/g, ' or ')
+          .replace(/\+\+/g, ' increment ')
+          .replace(/--/g, ' decrement ')
+          
+          // Clean up bullets and markers
+          .replace(/^[•\-*]\s*/gm, '')
+          .replace(/^\d+\.\s*/gm, '')                       // Numbered lists
+          .replace(/[✓✔]/g, 'done ')
+          .replace(/[✗✘]/g, 'failed ')
+          .replace(/•/g, '')
+          
+          // Remove visual tree chars and pipes
+          .replace(/├──|└──|│|├|└/g, '')
+          .replace(/\|(?=[^|]*\|)/g, ' ')                   // Keep table structure, clean single pipes
+          .replace(/\|/g, ' ')
+          
+          // Clean programming symbols
+          .replace(/[{}\[\]();]/g, ' ')
+          .replace(/[{}]/g, ' ')
+          .replace(/[;]/g, ', ')
+          .replace(/[_~^]/g, ' ')
+          .replace(/>\s*/g, ' greater than ')
+          .replace(/\s*</g, ' less than ')
+          .replace(/&/g, ' and ')
+          
+          // Clean up ellipsis and dashes
+          .replace(/\.\.\./g, ', and then ')
+          .replace(/--/g, ' ')
+          .replace(/—/g, ', ')
+          
+          // Final cleanup
+          .replace(/\s+/g, ' ')
+          .replace(/\s+([.,!?])/g, '$1')
+          .replace(/([.,!?])\s+/g, '$1 ')
           .trim();
+        
+        // If there was code, add a note
+        if (hasCode) {
+          result = 'Here is the code for you: ' + result;
+        }
+        
+        return result;
       };
 
       const cleanText = stripSymbolsForSpeech(text);
@@ -2912,6 +3052,8 @@ export default function App({ ready = true }: AppProps) {
           onRefreshNews={handleRefreshNews}
           onClearCache={handleClearCache}
           onSwitchView={setActiveView}
+          onSwitchIdeTab={setActiveIdeTab}
+          onSwitchLearnTab={setActiveLearnTab}
           onRunCommand={handleRunQuickCommand}
           onSaveCurrentPage={handleSaveCurrentPage}
           onExportBrain={handleExportBrain}
@@ -2922,15 +3064,35 @@ export default function App({ ready = true }: AppProps) {
           onSelectModel={(id) => { 
             try {
               console.log('[App] onSelectModel called with:', id);
-              const model = AVAILABLE_MODELS.find(m => m.id === id);
-              if (model) {
-                console.log('[App] Found model:', model.name, 'family:', model.family);
-                setSelectedModel(model);
-                localStorage.setItem('amo_selected_model_id', model.id);
-                console.log('[App] Model selection completed successfully');
-              } else {
-                console.error('[App] Model not found for ID:', id);
+              const cloudModel = AVAILABLE_MODELS.find(m => m.id === id);
+              if (cloudModel) {
+                console.log('[App] Found cloud model:', cloudModel.name, 'family:', cloudModel.family);
+                setSelectedModel(cloudModel);
+                localStorage.setItem('amo_selected_model_id', cloudModel.id);
+                return;
               }
+              const downloadedModelIds = (nativeOfflineStatus?.availableModels || []).map(m => {
+                const filename = m.relativePath.split('/').pop() || m.relativePath;
+                const modelIdMap: Record<string, string> = {
+                  'Phi-3.5-mini-Instruct-Q4_K_M.gguf': 'phi-3.5-mini',
+                };
+                return modelIdMap[filename] || filename;
+              });
+              if (downloadedModelIds.includes(id)) {
+                const nativeModel: ModelConfig = {
+                  id,
+                  name: id,
+                  description: 'Local offline model',
+                  size: 'Local',
+                  family: 'native',
+                  isCloud: false
+                };
+                console.log('[App] Selected native model:', nativeModel.name);
+                setSelectedModel(nativeModel);
+                localStorage.setItem('amo_selected_model_id', id);
+                return;
+              }
+              console.error('[App] Model not found for ID:', id);
             } catch (e: any) {
               console.error('[App] Error in onSelectModel:', e);
               setError(`Failed to select model: ${e.message}`);
@@ -2943,16 +3105,19 @@ export default function App({ ready = true }: AppProps) {
           hasOpenAiKey={hasOpenAiApiKey}
           hasOpenRouterKey={hasOpenRouterApiKey}
           hasMistralKey={hasMistralApiKey}
+          hasInworldKey={hasInworldApiKey}
           groqApiKey={groqApiKey}
           geminiApiKey={geminiApiKey}
           openAiApiKey={openAiApiKey}
           openRouterApiKey={openRouterApiKey}
           mistralApiKey={mistralApiKey}
+          inworldApiKey={inworldApiKey}
           onSetGroqKey={setGroqApiKey}
           onSetGeminiKey={setGeminiApiKey}
           onSetOpenAiKey={setOpenAiApiKey}
           onSetOpenRouterKey={setOpenRouterApiKey}
           onSetMistralKey={setMistralApiKey}
+          onSetInworldKey={setInworldApiKey}
           downloadedModels={(nativeOfflineStatus?.availableModels || []).map(m => {
             const filename = m.relativePath.split('/').pop() || m.relativePath;
             const modelIdMap: Record<string, string> = {
@@ -3072,19 +3237,42 @@ export default function App({ ready = true }: AppProps) {
         />
 
         <main className="flex-1 flex flex-col relative overflow-hidden">
-         <div className="border-b border-white/10 px-4 sm:px-6 py-3">
-           <div className="flex items-center gap-2 max-w-none overflow-x-auto custom-scrollbar">
-             <div className="flex items-center gap-2 flex-shrink-0">
-<button onClick={() => setActiveView('chat')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'chat' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Chat</button>
-              <button onClick={() => setActiveView('webview')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'webview' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Web Browser</button>
-              <button onClick={() => setActiveView('terminal')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'terminal' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Terminal</button>
-              <button onClick={() => setActiveView('editor')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'editor' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")}>Code Editor</button>
-              <button onClick={() => setActiveView('vocabulary')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'vocabulary' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")} title="Build and practice vocabulary">Vocabulary</button>
-              <button onClick={() => setActiveView('sentence-builder')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'sentence-builder' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")} title="Create practice sentences">Sentence Builder</button>
-              <button onClick={() => setActiveView('intent-enhancer')} className={cn("px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap", activeView === 'intent-enhancer' ? "bg-[#ff4e00]/20 text-[#ff4e00] border border-[#ff4e00]/30" : "text-white/50 border border-white/10 hover:text-white/80 hover:border-white/20")} title="Teach Amo to understand you better">Intent Enhancer</button>
-             </div>
-           </div>
-         </div>
+          {/* New grouped navigation */}
+          <div className="border-b border-white/10 px-4 sm:px-6 py-3">
+            <div className="flex items-center gap-2 max-w-none overflow-x-auto custom-scrollbar">
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {/* Primary Views */}
+                <button onClick={() => setActiveView('chat')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'chat' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Chat</button>
+                <button onClick={() => setActiveView('preview')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'preview' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Preview</button>
+                <button onClick={() => { setActiveView('ide'); setActiveIdeTab('editor'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'ide' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>IDE</button>
+                <button onClick={() => { setActiveView('learn'); setActiveLearnTab('vocabulary'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'learn' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Learn</button>
+                <button onClick={() => setActiveView('web')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'web' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Web</button>
+                <button onClick={() => setActiveView('settings')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'settings' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Settings</button>
+              </div>
+              
+              {/* Sub-tabs for IDE */}
+              {activeView === 'ide' && (
+                <div className="flex items-center gap-1 ml-4 pl-4 border-l border-white/10">
+                  <button onClick={() => setActiveIdeTab('editor')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'editor' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Editor</button>
+                  <button onClick={() => setActiveIdeTab('terminal')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'terminal' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Terminal</button>
+                  <button onClick={() => setActiveIdeTab('files')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'files' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Files</button>
+                  <button onClick={() => setActiveIdeTab('debug')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'debug' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Debug</button>
+                  <button onClick={() => setActiveIdeTab('run')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'run' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Run</button>
+                </div>
+              )}
+              
+              {/* Sub-tabs for Learn */}
+              {activeView === 'learn' && (
+                <div className="flex items-center gap-1 ml-4 pl-4 border-l border-white/10">
+                  <button onClick={() => setActiveLearnTab('vocabulary')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeLearnTab === 'vocabulary' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Vocabulary</button>
+                  <button onClick={() => setActiveLearnTab('sentences')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeLearnTab === 'sentences' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Sentences</button>
+                  <button onClick={() => setActiveLearnTab('intent')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeLearnTab === 'intent' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Intent</button>
+                  <button onClick={() => setActiveLearnTab('brain')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeLearnTab === 'brain' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Brain</button>
+                  <button onClick={() => setActiveLearnTab('practice')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeLearnTab === 'practice' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Practice</button>
+                </div>
+              )}
+            </div>
+          </div>
 
          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
            {activeView === 'chat' && (
@@ -3133,151 +3321,384 @@ export default function App({ ready = true }: AppProps) {
                      <p className="text-white/20 font-serif italic text-lg tracking-widest uppercase">Kia Ora. How can I help?</p>
                    </div>
                  ) : (
-                   <MessageList messages={messages} assistantName="Amo" onCopy={handleCopy} onRegenerate={handleRegenerate} />
+                    <MessageList messages={messages} assistantName="Amo" onCopy={handleCopy} onRegenerate={handleRegenerate} onUseInEditor={handleUseCodeInEditor} />
                  )}
                  <div ref={messagesEndRef} />
                </div>
              </div>
            )}
 
-            {activeView === 'webview' && (
+            {/* Preview View - dedicated preview panel */}
+            {activeView === 'preview' && (
+              <div className="h-full flex flex-col p-4">
+                <div className="flex-1 glass-panel border border-white/10 rounded-2xl overflow-hidden">
+                  <CodePreview 
+                    code={previewContent?.code || ''} 
+                    language={previewContent?.language || 'html'} 
+                    onClose={() => setPreviewContent(null)} 
+                  />
+                </div>
+                {(!previewContent || !previewContent.code) && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <p className="text-white/30 text-sm">Preview will appear here when you create HTML/JS code</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* IDE View - Editor + Terminal + Files + Debug + Run */}
+            {activeView === 'ide' && (
+              <div className="h-full p-4">
+                {activeIdeTab === 'editor' && (
+                  <div className="h-full">
+                    <CodeEditor 
+                      key={pendingEditorCode?.token || 'editor-default'}
+                      initialCode={pendingEditorCode?.code} 
+                      initialFileName={pendingEditorCode?.filename}
+                      autoRun={pendingEditorCode?.autoRun}
+                      autoPreview={true}
+                      refreshKey={fileRefreshKey}
+                      onOutputCapture={(output) => setAmoTerminalOutput(output)}
+                      onGenerate={(prompt) => {
+                        setInput(prompt);
+                        setActiveView('chat');
+                        setTimeout(() => handleSend(), 100);
+                      }}
+                    />
+                  </div>
+                )}
+                {activeIdeTab === 'terminal' && (
+                  <div className="h-full glass-panel border border-white/10 rounded-2xl overflow-hidden">
+                    <Terminal />
+                  </div>
+                )}
+                {activeIdeTab === 'files' && (
+                  <div className="h-full glass-panel border border-white/10 rounded-2xl overflow-hidden p-4">
+                    <h3 className="text-sm font-medium text-white/80 mb-4">Files</h3>
+                    <FileTree
+                      onFileSelect={(path, content) => {
+                        setPendingEditorCode({ code: content, filename: path, token: crypto.randomUUID() });
+                        setActiveIdeTab('editor');
+                      }}
+                      refreshKey={fileRefreshKey}
+                    />
+                  </div>
+                )}
+                {activeIdeTab === 'debug' && (
+                  <div className="h-full glass-panel border border-white/10 rounded-2xl overflow-hidden p-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-lg font-semibold text-white/90">Debug Console</h2>
+                      <button 
+                        onClick={() => setActiveIdeTab('terminal')}
+                        className="px-4 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg transition-all"
+                      >
+                        Open Terminal
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
+                        <div className="text-xs text-white/40 mb-2">Console Output</div>
+                        <div className="font-mono text-sm text-white/70 h-48 overflow-auto custom-scrollbar">
+                          {amoTerminalOutput || 'No output yet. Run code to see results here.'}
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
+                        <div className="text-xs text-white/40 mb-2">Breakpoints</div>
+                        <div className="text-sm text-white/50">No breakpoints set</div>
+                      </div>
+                      <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
+                        <div className="text-xs text-white/40 mb-2">Variables</div>
+                        <div className="text-sm text-white/50">No variables in scope</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {activeIdeTab === 'run' && (
+                  <div className="h-full glass-panel border border-white/10 rounded-2xl overflow-hidden p-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-lg font-semibold text-white/90">Run & Execute</h2>
+                      <button 
+                        onClick={() => setActiveIdeTab('editor')}
+                        className="px-4 py-2 text-sm bg-[#ff4e00] hover:bg-[#ff4e00]/90 text-white rounded-lg transition-all"
+                      >
+                        Open Editor
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={() => setActiveIdeTab('editor')}
+                        className="p-6 rounded-xl bg-white/[0.03] border border-white/10 hover:border-[#ff4e00]/30 hover:bg-[#ff4e00]/5 transition-all text-left"
+                      >
+                        <div className="text-2xl mb-2">▶</div>
+                        <div className="text-sm font-medium text-white/80">Run Code</div>
+                        <div className="text-xs text-white/40 mt-1">Execute current file</div>
+                      </button>
+                      <button 
+                        onClick={() => setActiveView('preview')}
+                        className="p-6 rounded-xl bg-white/[0.03] border border-white/10 hover:border-[#ff4e00]/30 hover:bg-[#ff4e00]/5 transition-all text-left"
+                      >
+                        <div className="text-2xl mb-2">🌐</div>
+                        <div className="text-sm font-medium text-white/80">Preview</div>
+                        <div className="text-xs text-white/40 mt-1">View HTML/JS output</div>
+                      </button>
+                      <button 
+                        onClick={() => setActiveIdeTab('debug')}
+                        className="p-6 rounded-xl bg-white/[0.03] border border-white/10 hover:border-[#ff4e00]/30 hover:bg-[#ff4e00]/5 transition-all text-left"
+                      >
+                        <div className="text-2xl mb-2">🐛</div>
+                        <div className="text-sm font-medium text-white/80">Debug</div>
+                        <div className="text-xs text-white/40 mt-1">Inspect variables</div>
+                      </button>
+                      <button 
+                        onClick={() => setActiveIdeTab('terminal')}
+                        className="p-6 rounded-xl bg-white/[0.03] border border-white/10 hover:border-[#ff4e00]/30 hover:bg-[#ff4e00]/5 transition-all text-left"
+                      >
+                        <div className="text-2xl mb-2">$</div>
+                        <div className="text-sm font-medium text-white/80">Terminal</div>
+                        <div className="text-xs text-white/40 mt-1">Command shell</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Learn View - Vocabulary + Sentences + Intent */}
+            {activeView === 'learn' && (
+              <div className="h-full p-4">
+                {activeLearnTab === 'vocabulary' && (
+                  <div className="h-full">
+                    {localStorage.getItem('amo_vocabulary_visited') !== 'true' && (
+                      <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <div className="text-[#ff8a5c] mt-0.5">💡</div>
+                          <div className="flex-1">
+                            <h3 className="text-sm font-semibold text-white/90 mb-1">Quick Start: Vocabulary Builder</h3>
+                            <p className="text-xs text-white/70 mb-2">
+                              Click the <strong>Help</strong> button (❓) in the top-right to learn how to extract words from websites, generate vocabulary sets, and practice with flashcards.
+                            </p>
+                            <button 
+                              onClick={() => localStorage.setItem('amo_vocabulary_visited', 'true')}
+                              className="text-xs text-[#ff8a5c] hover:text-[#ff4e00] transition-colors"
+                            >
+                              Got it
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <VocabularyBuilder />
+                  </div>
+                )}
+                {activeLearnTab === 'sentences' && (
+                  <div className="h-full">
+                    {localStorage.getItem('amo_sentence_builder_visited') !== 'true' && (
+                      <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <div className="text-[#ff8a5c] mt-0.5">💡</div>
+                          <div className="flex-1">
+                            <h3 className="text-sm font-semibold text-white/90 mb-1">Quick Start: Sentence Builder</h3>
+                            <p className="text-xs text-white/70 mb-2">
+                              Click the <strong>Help</strong> button (❓) to learn how to create sentences with AI, build templates, and use vocabulary words in practice sentences.
+                            </p>
+                            <button 
+                              onClick={() => localStorage.setItem('amo_sentence_builder_visited', 'true')}
+                              className="text-xs text-[#ff8a5c] hover:text-[#ff4e00] transition-colors"
+                            >
+                              Got it
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <SentenceBuilder />
+                  </div>
+                )}
+                {activeLearnTab === 'intent' && (
+                  <div className="h-full">
+                    {localStorage.getItem('amo_intent_enhancer_visited') !== 'true' && (
+                      <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <div className="text-[#ff8a5c] mt-0.5">💡</div>
+                          <div className="flex-1">
+                            <h3 className="text-sm font-semibold text-white/90 mb-1">Quick Start: Intent Enhancer</h3>
+                            <p className="text-xs text-white/70 mb-2">
+                              Teach Amo to understand you better by adding patterns, examples, and clarifications.
+                            </p>
+                            <button 
+                              onClick={() => localStorage.setItem('amo_intent_enhancer_visited', 'true')}
+                              className="text-xs text-[#ff8a5c] hover:text-[#ff4e00] transition-colors"
+                            >
+                              Got it
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <IntentEnhancer />
+                  </div>
+                )}
+                {activeLearnTab === 'brain' && (
+                  <div className="h-full glass-panel border border-white/10 rounded-2xl overflow-hidden p-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-lg font-semibold text-white/90">Brain & Memory</h2>
+                      <div className="flex gap-2">
+                        <button className="px-4 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg transition-all">
+                          Export
+                        </button>
+                        <button className="px-4 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg transition-all">
+                          Import
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10">
+                        <div className="text-2xl font-bold text-white/90">{brainMemoryRows.length}</div>
+                        <div className="text-xs text-white/40 mt-1">Memory Notes</div>
+                      </div>
+                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10">
+                        <div className="text-2xl font-bold text-white/90">{brainSummaryRows.length}</div>
+                        <div className="text-xs text-white/40 mt-1">Summaries</div>
+                      </div>
+                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10">
+                        <div className="text-2xl font-bold text-white/90">{seedPackRows.length}</div>
+                        <div className="text-xs text-white/40 mt-1">Seed Packs</div>
+                      </div>
+                    </div>
+                    <div className="mb-4">
+                      <h3 className="text-sm font-medium text-white/70 mb-3">Recent Memories</h3>
+                      <div className="space-y-2 max-h-64 overflow-auto custom-scrollbar">
+                        {brainMemoryRows.slice(0, 10).map((row, i) => (
+                          <div key={i} className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                            <div className="text-xs text-white/50 truncate">{row.scope}</div>
+                            <div className="text-sm text-white/80 mt-1">{row.content?.substring(0, 100)}...</div>
+                          </div>
+                        ))}
+                        {brainMemoryRows.length === 0 && (
+                          <div className="text-sm text-white/40 text-center py-8">No memories yet. Chat with Amo to build memory.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {activeLearnTab === 'practice' && (
+                  <div className="h-full glass-panel border border-white/10 rounded-2xl overflow-hidden p-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-lg font-semibold text-white/90">Practice Mode</h2>
+                      <button 
+                        onClick={() => setActiveLearnTab('vocabulary')}
+                        className="px-4 py-2 text-sm bg-[#ff4e00] hover:bg-[#ff4e00]/90 text-white rounded-lg transition-all"
+                      >
+                        Start Practice
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={() => setActiveLearnTab('vocabulary')}
+                        className="p-6 rounded-xl bg-white/[0.03] border border-white/10 hover:border-[#ff4e00]/30 hover:bg-[#ff4e00]/5 transition-all text-left"
+                      >
+                        <div className="text-2xl mb-2">📚</div>
+                        <div className="text-sm font-medium text-white/80">Vocabulary Quiz</div>
+                        <div className="text-xs text-white/40 mt-1">Test your word knowledge</div>
+                      </button>
+                      <button 
+                        onClick={() => setActiveLearnTab('sentences')}
+                        className="p-6 rounded-xl bg-white/[0.03] border border-white/10 hover:border-[#ff4e00]/30 hover:bg-[#ff4e00]/5 transition-all text-left"
+                      >
+                        <div className="text-2xl mb-2">✍️</div>
+                        <div className="text-sm font-medium text-white/80">Sentence Building</div>
+                        <div className="text-xs text-white/40 mt-1">Practice constructing sentences</div>
+                      </button>
+                      <button 
+                        onClick={() => setActiveLearnTab('intent')}
+                        className="p-6 rounded-xl bg-white/[0.03] border border-white/10 hover:border-[#ff4e00]/30 hover:bg-[#ff4e00]/5 transition-all text-left"
+                      >
+                        <div className="text-2xl mb-2">🎯</div>
+                        <div className="text-sm font-medium text-white/80">Intent Recognition</div>
+                        <div className="text-xs text-white/40 mt-1">Test pattern matching</div>
+                      </button>
+                      <button 
+                        onClick={() => setActiveLearnTab('brain')}
+                        className="p-6 rounded-xl bg-white/[0.03] border border-white/10 hover:border-[#ff4e00]/30 hover:bg-[#ff4e00]/5 transition-all text-left"
+                      >
+                        <div className="text-2xl mb-2">🧠</div>
+                        <div className="text-sm font-medium text-white/80">Memory Recall</div>
+                        <div className="text-xs text-white/40 mt-1">Test your learned knowledge</div>
+                      </button>
+                    </div>
+                    <div className="mt-6 p-4 rounded-xl bg-white/[0.02] border border-white/10">
+                      <h3 className="text-sm font-medium text-white/70 mb-3">Progress</h3>
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <div className="flex justify-between text-xs text-white/50 mb-1">
+                            <span>Overall Progress</span>
+                            <span>0%</span>
+                          </div>
+                          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#ff4e00] rounded-full w-0 transition-all" />
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-white/40 mt-3">Complete practice activities to track your progress.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Web View */}
+            {activeView === 'web' && (
               <div className="h-full max-w-4xl mx-auto w-full min-h-[420px]">
                 <WebBrowser url={webViewUrl} onNavigate={(url) => setWebViewUrl(url)} />
               </div>
             )}
 
-            <div className={activeView === 'terminal' ? 'h-full' : 'hidden'}>
-              <div className="h-full max-w-4xl mx-auto w-full glass-panel border border-white/10 rounded-[1.75rem] overflow-hidden min-h-[420px] p-2">
-                <Terminal />
-              </div>
-            </div>
-
-            <div className={activeView === 'editor' ? 'h-full' : 'hidden'}>
-              <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
-                <CodeEditor 
-                  key={pendingEditorCode?.token || 'editor-default'}
-                  initialCode={pendingEditorCode?.code} 
-                  initialFileName={pendingEditorCode?.filename}
-                  autoRun={pendingEditorCode?.autoRun}
-                  onOutputCapture={(output) => setAmoTerminalOutput(output)}
-                  onGenerate={(prompt, context) => {
-                    // User requests code generation from within editor
-                    setInput(prompt);
-                    setActiveView('chat');
-                    setTimeout(() => handleSend(), 100);
-                  }}
-                />
-              </div>
-            </div>
-
-            {activeView === 'vocabulary' && (
-              <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
-                {localStorage.getItem('amo_vocabulary_visited') !== 'true' && (
-                  <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <div className="text-[#ff8a5c] mt-0.5">💡</div>
-                      <div className="flex-1">
-                        <h3 className="text-sm font-semibold text-white/90 mb-1">Quick Start: Vocabulary Builder</h3>
-                        <p className="text-xs text-white/70 mb-2">
-                          Click the <strong>Help</strong> button (❓) in the top-right to learn how to extract words from websites, generate vocabulary sets, and practice with flashcards.
-                        </p>
-                        <button 
-                          onClick={() => localStorage.setItem('amo_vocabulary_visited', 'true')}
-                          className="text-xs text-[#ff8a5c] hover:text-[#ff4e00] transition-colors"
-                        >
-                          Got it →
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <VocabularyBuilder />
-              </div>
-            )}
-
-            {activeView === 'sentence-builder' && (
-              <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
-                {localStorage.getItem('amo_sentence_builder_visited') !== 'true' && (
-                  <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <div className="text-[#ff8a5c] mt-0.5">💡</div>
-                      <div className="flex-1">
-                        <h3 className="text-sm font-semibold text-white/90 mb-1">Quick Start: Sentence Builder</h3>
-                        <p className="text-xs text-white/70 mb-2">
-                          Click the <strong>Help</strong> button (❓) to learn how to create sentences with AI, build templates, and use vocabulary words in practice sentences.
-                        </p>
-                        <button 
-                          onClick={() => localStorage.setItem('amo_sentence_builder_visited', 'true')}
-                          className="text-xs text-[#ff8a5c] hover:text-[#ff4e00] transition-colors"
-                        >
-                          Got it →
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <SentenceBuilder />
-              </div>
-            )}
-
-            {activeView === 'intent-enhancer' && (
-              <div className="h-full max-w-6xl mx-auto w-full min-h-[420px]">
-                {localStorage.getItem('amo_intent_enhancer_visited') !== 'true' && (
-                  <div className="mb-4 p-4 bg-[#ff4e00]/5 border border-[#ff4e00]/20 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <div className="text-[#ff8a5c] mt-0.5">💡</div>
-                      <div className="flex-1">
-                        <h3 className="text-sm font-semibold text-white/90 mb-1">Quick Start: Intent Enhancer</h3>
-                        <p className="text-xs text-white/70 mb-2">
-                          Click the <strong>Help</strong> button (❓) to learn how to teach Amo to understand your specific requests better with keywords and patterns.
-                        </p>
-                        <button 
-                          onClick={() => localStorage.setItem('amo_intent_enhancer_visited', 'true')}
-                          className="text-xs text-[#ff8a5c] hover:text-[#ff4e00] transition-colors"
-                        >
-                          Got it →
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <IntentEnhancer />
+            {/* Settings View */}
+            {activeView === 'settings' && (
+              <div className="h-full p-4">
+                <div className="max-w-2xl mx-auto space-y-4">
+                  {/* Settings content would go here */}
+                  <h2 className="text-xl font-semibold text-white/90">Settings</h2>
+                  <p className="text-white/60">Configure your Amo preferences.</p>
+                </div>
               </div>
             )}
           </div>
 
-         {activeView === 'chat' && (
-           <div className="p-4 sm:p-8 relative z-10">
-             <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent pointer-events-none" />
-             <div className="max-w-4xl mx-auto relative space-y-3">
-               {selectedImage && (
-                 <div className="glass-panel rounded-[1.5rem] border border-white/8 p-3 flex items-center gap-3 shadow-xl">
-                   <img src={selectedImage} alt="Selected upload" className="h-14 w-14 rounded-2xl object-cover border border-white/10" />
-                   <div className="min-w-0 flex-1">
-                     <div className="micro-label mb-1">Image attached</div>
-                     <p className="truncate text-xs text-white/45">Amo will keep the image with your next message.</p>
-                   </div>
-                   <button onClick={() => setSelectedImage(null)} className="rounded-full p-2 text-white/30 hover:text-white/80 hover:bg-white/5 transition-all" title="Remove image">
-                     <X className="h-4 w-4" />
-                   </button>
-                 </div>
-               )}
-              <div className="flex items-stretch gap-3 relative">
-                <button onClick={() => fileInputRef.current?.click()} className="h-[60px] w-14 shrink-0 rounded-2xl glass-panel border border-white/5 flex items-center justify-center text-white/40 hover:border-[#ff4e00]/30 transition-all active:scale-95 shadow-xl"><Plus className="w-5 h-5" /></button>
-                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept={documentService.getSupportedExtensions() + ',image/*'} className="hidden" />
-                <div className="relative flex-1 flex items-stretch">
-                  <textarea ref={textareaRef} value={input} onChange={handleInput} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="Chat with Amo..." className="w-full glass-panel border border-white/5 rounded-[1.75rem] px-6 py-[18px] pr-28 text-[15px] focus:outline-none focus:border-[#ff4e00]/50 resize-none min-h-[60px] h-[60px] shadow-2xl transition-all" rows={1} />
-                   <div className="absolute right-14 top-1/2 -translate-y-1/2">
-                     <button onClick={toggleListening} className={cn("w-10 h-10 rounded-full flex items-center justify-center transition-all", isListening ? "bg-red-500/20 text-red-500" : "text-white/20 hover:text-white/80")}>
-                       {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                     </button>
-                   </div>
+          {/* Chat input bar - always visible when in chat view */}
+          {activeView === 'chat' && (
+            <div className="p-4 sm:p-8 relative z-10">
+              <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent pointer-events-none" />
+              <div className="max-w-4xl mx-auto relative space-y-3">
+                {selectedImage && (
+                  <div className="glass-panel rounded-[1.5rem] border border-white/8 p-3 flex items-center gap-3 shadow-xl">
+                    <img src={selectedImage} alt="Selected upload" className="h-14 w-14 rounded-2xl object-cover border border-white/10" />
+                    <div className="min-w-0 flex-1">
+                      <div className="micro-label mb-1">Image attached</div>
+                      <p className="truncate text-xs text-white/45">Amo will keep the image with your next message.</p>
+                    </div>
+                    <button onClick={() => setSelectedImage(null)} className="rounded-full p-2 text-white/30 hover:text-white/80 hover:bg-white/5 transition-all" title="Remove image">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                <div className="flex items-stretch gap-3 relative">
+                  <button onClick={() => fileInputRef.current?.click()} className="h-[60px] w-14 shrink-0 rounded-2xl glass-panel border border-white/5 flex items-center justify-center text-white/40 hover:border-[#ff4e00]/30 transition-all active:scale-95 shadow-xl"><Plus className="w-5 h-5" /></button>
+                  <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept={documentService.getSupportedExtensions() + ',image/*'} className="hidden" />
+                  <div className="relative flex-1 flex items-stretch">
+                    <textarea ref={textareaRef} value={input} onChange={handleInput} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="Chat with Amo..." className="w-full glass-panel border border-white/5 rounded-[1.75rem] px-6 py-[18px] pr-28 text-[15px] focus:outline-none focus:border-[#ff4e00]/50 resize-none min-h-[60px] h-[60px] shadow-2xl transition-all" rows={1} />
+                    <div className="absolute right-14 top-1/2 -translate-y-1/2">
+                      <button onClick={toggleListening} className={cn("w-10 h-10 rounded-full flex items-center justify-center transition-all", isListening ? "bg-red-500/20 text-red-500" : "text-white/20 hover:text-white/80")}>
+                        {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                      </button>
+                    </div>
                     <button onClick={isLoading ? handleCancelThinking : handleSend} disabled={!isLoading && !input.trim()} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-gradient-to-br from-orange-500 to-[#ff4e00] text-white flex items-center justify-center hover:opacity-90 disabled:opacity-30 transition-all shadow-lg">{isLoading ? <X className="w-5 h-5" /> : <Send className="w-4 h-4 ml-0.5" />}</button>
-                 </div>
-               </div>
+                  </div>
+                </div>
               </div>
             </div>
-          )}
+            )}
+
         </main>
       </div>
       

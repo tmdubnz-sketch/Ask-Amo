@@ -8,7 +8,7 @@
 - No `.cursor/rules/` directory is present.
 - No `.cursorrules` file is present.
 - No `.github/copilot-instructions.md` file is present.
-- 6 agent skills in `.github/skills/`: refactor-helper, boilerplate-gen, tdd-enforcer, auto-debugger, cli-master, doc-search.
+- 11 agent skills in `.github/skills/`: refactor-helper, boilerplate-gen, tdd-enforcer, auto-debugger, cli-master, doc-search, build-amo-vocab, debug-tests, playwright-test, red-team-amo, test-amo.
 
 **Project Snapshot**
 - React 19 SPA built with Vite 6.
@@ -108,13 +108,18 @@
 - `cap:wireless` now patches the regenerated `android/capacitor-cordova-android-plugins/build.gradle` after `cap sync` so recurring `flatDir` and Gradle property-syntax warnings do not reappear every deploy.
 
 **Agent Skills**
-- 6 skills in `.github/skills/` for agent-driven development:
+- 11 skills in `.github/skills/` for agent-driven development:
   - `refactor-helper`: Cleans up messy code for readability and performance.
   - `boilerplate-gen`: Generates standardized project files.
   - `tdd-enforcer`: Drives development using Red-Green-Refactor loop.
   - `auto-debugger`: Investigates and repairs failing tests or build errors.
   - `cli-master`: Performs project administration and environment tasks.
   - `doc-search`: Queries external documentation for latest API specifications.
+  - `build-amo-vocab`: Vocabulary builder seeding for Amo.
+  - `debug-tests`: Specialized test debugging.
+  - `playwright-test`: Playwright UI testing.
+  - `red-team-amo`: Security testing.
+  - `test-amo`: Amo-specific test automation.
 
 **Test Commands**
 - `npm run test:amo chat "what can you do"` — test chat response
@@ -132,14 +137,14 @@
 
 **TypeScript And Build Settings**
 - Client config uses `moduleResolution: "bundler"`, `moduleDetection: "force"`, `jsx: "react-jsx"`, and `strict: true`.
-- Path alias `@/*` maps to the repo root, not just `src/`.
+- Path alias `@/*` maps to the repo root, not just `src/`. Use `@/` for imports (e.g., `import { cn } from '@/lib/utils'`).
 - Client `tsconfig.json` includes only `src/`.
 - Server build is compiled separately with `tsconfig.server.json`.
 - `server.ts` is ESM-flavored TypeScript and outputs into `dist/`.
 
 **Imports**
 - Put React imports first, third-party packages next, then local modules.
-- Existing code mixes alias imports and relative imports; match the surrounding file instead of rewriting import style broadly.
+- Use `@/` alias for local imports (e.g., `import { cn } from '@/lib/utils'`).
 - Use named imports when the file already does so for icons, hooks, and helpers.
 - Keep long icon import lists multi-line for readability.
 - Avoid leaving unused imports behind; `tsc --noEmit` is the main lint gate.
@@ -210,7 +215,7 @@
 - Shared visual tokens live in `src/index.css` via CSS variables and `@theme` font definitions.
 - Existing UI direction is dark, glassy, and accent-driven with orange highlights around `#ff4e00`.
 - Reuse helper classes such as `glass-panel`, `micro-label`, `serif-content`, `nav-pill`, and `scroll-mask`.
-- `cn()` from `src/lib/utils.ts` is the standard class merge helper.
+- `cn()` from `src/lib/utils.ts` is the standard class merge helper: `import { cn } from '@/lib/utils'`.
 - Motion uses `motion/react`; keep animations subtle and purposeful.
 
 **Code Editor**

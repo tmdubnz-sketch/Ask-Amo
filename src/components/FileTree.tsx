@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Folder, FileText, FileCode, File, ChevronRight, ChevronDown, RefreshCw, Plus } from 'lucide-react';
+import { Folder, FolderPlus, FileText, FileCode, File, ChevronRight, ChevronDown, RefreshCw, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { workspaceService, type WorkspaceEntry } from '../services/workspaceService';
 
 interface FileItem {
   name: string;
@@ -12,6 +13,7 @@ interface FileItem {
 interface FileTreeProps {
   onFileSelect: (path: string, content: string) => void;
   currentFile?: string;
+  refreshKey?: number | string;
 }
 
 // Get file icon based on extension
@@ -77,44 +79,100 @@ export const getLanguageFromPath = (path: string): string => {
   return langMap[ext] || 'text';
 };
 
-export const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, currentFile }) => {
+export const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, currentFile, refreshKey }) => {
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['/']));
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['__workspace_root__']));
   const [isLoading, setIsLoading] = useState(false);
+  const [workspaceRootPath, setWorkspaceRootPath] = useState('workspace');
+
+  const buildTree = (entries: WorkspaceEntry[]): FileItem[] => {
+    const root: FileItem[] = [];
+    const lookup = new Map<string, FileItem>();
+
+    const ensureDir = (dirPath: string): FileItem => {
+      const normalized = dirPath.replace(/\\/g, '/');
+      const existing = lookup.get(normalized);
+      if (existing) return existing;
+
+      const name = normalized.split('/').pop() || normalized;
+      const item: FileItem = { name, path: normalized, isDirectory: true, children: [] };
+      lookup.set(normalized, item);
+
+      const parentPath = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : '';
+      if (parentPath) {
+        const parent = ensureDir(parentPath);
+        parent.children = parent.children || [];
+        if (!parent.children.some((child) => child.path === normalized)) {
+          parent.children.push(item);
+        }
+      } else {
+        root.push(item);
+      }
+
+      return item;
+    };
+
+    for (const entry of entries) {
+      const normalized = entry.path.replace(/\\/g, '/');
+      const parts = normalized.split('/');
+
+      if (parts.length > 1) {
+        ensureDir(parts.slice(0, -1).join('/'));
+      }
+
+      if (entry.isDirectory) {
+        ensureDir(normalized);
+        continue;
+      }
+
+      const fileItem: FileItem = {
+        name: entry.name,
+        path: normalized,
+        isDirectory: false,
+      };
+
+      const parentPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+      if (parentPath) {
+        const parent = ensureDir(parentPath);
+        parent.children = parent.children || [];
+        parent.children.push(fileItem);
+      } else {
+        root.push(fileItem);
+      }
+    }
+
+    const sortItems = (items: FileItem[]): FileItem[] => items
+      .sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.localeCompare(b.name);
+      })
+      .map((item) => ({
+        ...item,
+        children: item.children ? sortItems(item.children) : undefined,
+      }));
+
+    return sortItems(root);
+  };
 
   const loadFiles = async () => {
     setIsLoading(true);
     try {
-      // Load from localStorage (workspace files stored there)
-      const workspaceFiles: FileItem[] = [];
-      
-      // Check localStorage for stored files
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key?.startsWith('amo-file:')) {
-          const name = key.replace('amo-file:', '');
-          workspaceFiles.push({
-            name,
-            path: name,
-            isDirectory: false,
-          });
-        }
+      const rootPath = await workspaceService.getWorkspacePath();
+      setWorkspaceRootPath(rootPath);
+
+      const entries = await workspaceService.listWorkspaceEntries();
+
+      if (entries.length === 0) {
+        await Promise.all([
+          workspaceService.createWorkspaceFile('index.html'),
+          workspaceService.createWorkspaceFile('app.js'),
+          workspaceService.createWorkspaceFile('style.css'),
+        ]);
       }
 
-      // Also add some default project structure
-      if (workspaceFiles.length === 0) {
-        workspaceFiles.push(
-          { name: 'index.html', path: 'index.html', isDirectory: false },
-          { name: 'app.js', path: 'app.js', isDirectory: false },
-          { name: 'style.css', path: 'style.css', isDirectory: false },
-        );
-      }
-
-      setFiles(workspaceFiles.sort((a, b) => {
-        if (a.isDirectory && !b.isDirectory) return -1;
-        if (!a.isDirectory && b.isDirectory) return 1;
-        return a.name.localeCompare(b.name);
-      }));
+      const refreshedEntries = await workspaceService.listWorkspaceEntries();
+      setFiles(buildTree(refreshedEntries));
     } catch (err) {
       console.error('Failed to load files:', err);
     } finally {
@@ -124,7 +182,7 @@ export const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, currentFile })
 
   useEffect(() => {
     loadFiles();
-  }, []);
+  }, [refreshKey]);
 
   const handleFileClick = async (file: FileItem) => {
     if (file.isDirectory) {
@@ -139,7 +197,7 @@ export const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, currentFile })
     }
 
     // Load file content
-    const content = localStorage.getItem(`amo-file:${file.path}`) || '';
+    const content = await workspaceService.readWorkspaceFile(file.path) || '';
     onFileSelect(file.path, content);
   };
 
@@ -184,6 +242,9 @@ export const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, currentFile })
     );
   };
 
+  const rootExpanded = expandedDirs.has('__workspace_root__');
+  const workspaceRootLabel = workspaceRootPath.split('/').filter(Boolean).pop() || workspaceRootPath;
+
   return (
     <div className="h-full flex flex-col bg-[#0d1117] border-r border-white/10">
       {/* Header */}
@@ -193,12 +254,35 @@ export const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, currentFile })
         </span>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => {
-              const name = prompt('New file name:', 'untitled.js');
+            onClick={async () => {
+              const name = prompt('New folder path from workspace root:', 'src');
               if (name) {
-                localStorage.setItem(`amo-file:${name}`, '');
-                loadFiles();
-                onFileSelect(name, '');
+                const normalizedName = name.replace(/\\/g, '/');
+                await workspaceService.createWorkspaceDirectory(normalizedName);
+                await loadFiles();
+                setExpandedDirs((previous) => new Set(previous).add('__workspace_root__').add(normalizedName));
+              }
+            }}
+            className="p-1 text-white/40 hover:text-white/80 transition-colors"
+            title="New folder"
+          >
+            <FolderPlus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={async () => {
+              const name = prompt('New file path from workspace root:', 'untitled.js');
+              if (name) {
+                const normalizedName = name.replace(/\\/g, '/');
+                await workspaceService.createWorkspaceFile(normalizedName);
+                await loadFiles();
+                const parentPath = normalizedName.includes('/') ? normalizedName.slice(0, normalizedName.lastIndexOf('/')) : '';
+                setExpandedDirs((previous) => {
+                  const next = new Set(previous);
+                  next.add('__workspace_root__');
+                  if (parentPath) next.add(parentPath);
+                  return next;
+                });
+                onFileSelect(normalizedName, '');
               }
             }}
             className="p-1 text-white/40 hover:text-white/80 transition-colors"
@@ -216,9 +300,34 @@ export const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, currentFile })
         </div>
       </div>
 
+      <button
+        onClick={() => {
+          const next = new Set(expandedDirs);
+          if (next.has('__workspace_root__')) {
+            next.delete('__workspace_root__');
+          } else {
+            next.add('__workspace_root__');
+          }
+          setExpandedDirs(next);
+        }}
+        className="flex items-center gap-2 px-3 py-2 border-b border-white/10 bg-white/[0.02] text-left text-white/75 hover:bg-white/[0.04] transition-colors"
+        title={workspaceRootPath}
+      >
+        {rootExpanded ? (
+          <ChevronDown className="w-3.5 h-3.5 text-white/40" />
+        ) : (
+          <ChevronRight className="w-3.5 h-3.5 text-white/40" />
+        )}
+        <Folder className="w-4 h-4 text-[#ffb347]" />
+        <div className="min-w-0">
+          <div className="truncate text-xs font-medium">{workspaceRootLabel}</div>
+          <div className="truncate text-[10px] text-white/35">{workspaceRootPath}</div>
+        </div>
+      </button>
+
       {/* File List */}
       <div className="flex-1 overflow-y-auto py-1">
-        {files.length === 0 ? (
+        {!rootExpanded ? null : files.length === 0 ? (
           <div className="px-3 py-4 text-center text-white/30 text-sm">
             No files yet
           </div>

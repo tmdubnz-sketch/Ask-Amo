@@ -113,7 +113,7 @@ export const CodePreview: React.FC<CodePreviewProps> = ({ code, language, onClos
   return (
     <div className="h-full flex flex-col bg-[#0d1117] rounded-xl overflow-hidden border border-white/10">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-white/10">
+      <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-white/10 flex-shrink-0">
         <span className="text-xs font-mono text-white/60">
           Preview — {language || 'code'}
         </span>
@@ -121,7 +121,9 @@ export const CodePreview: React.FC<CodePreviewProps> = ({ code, language, onClos
           <button
             onClick={() => {
               if (iframeRef.current) {
-                iframeRef.current.srcdoc = iframeRef.current.srcdoc;
+                const current = iframeRef.current.srcdoc;
+                iframeRef.current.srcdoc = '';
+                iframeRef.current.srcdoc = current;
               }
             }}
             className="p-1 text-white/40 hover:text-white/80 transition-colors"
@@ -146,13 +148,15 @@ export const CodePreview: React.FC<CodePreviewProps> = ({ code, language, onClos
         </div>
       </div>
 
-      {/* Preview Content */}
-      <iframe
-        ref={iframeRef}
-        className="flex-1 w-full border-0"
-        sandbox="allow-scripts allow-same-origin"
-        title="Code Preview"
-      />
+      {/* Preview Content - iframe needs explicit height */}
+      <div className="flex-1 min-h-[200px]">
+        <iframe
+          ref={iframeRef}
+          className="w-full h-full border-0"
+          sandbox="allow-scripts allow-same-origin"
+          title="Code Preview"
+        />
+      </div>
     </div>
   );
 };

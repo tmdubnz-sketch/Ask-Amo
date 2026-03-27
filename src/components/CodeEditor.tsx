@@ -9,8 +9,9 @@ import {
   FileCode,
   Sparkles,
   Trash2,
+  Eye,
 } from 'lucide-react';
-import { Capacitor } from '@capacitor/core';
+import { CodePreview } from './CodePreview';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -20,19 +21,10 @@ import { markdown } from '@codemirror/lang-markdown';
 import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-import { terminalService } from '../services/terminalService';
+import { workspaceService } from '../services/workspaceService';
 import { executeCode } from '../utils/codeExecutor';
-import { CodePreview } from './CodePreview';
 import { FileTree, getLanguageFromPath } from './FileTree';
 import { cn } from '../lib/utils';
-
-// Get the workspace path for running files
-const getWorkspacePath = (): string => {
-  if (Capacitor.isNativePlatform()) {
-    return '/storage/emulated/0/Documents/AskAmo';
-  }
-  return './amo-workspace';
-};
 
 export type CodeLanguage = 
   | 'python' 
@@ -64,9 +56,10 @@ interface CodeEditorProps {
   onRun?: (code: string, language: CodeLanguage) => void;
   onGenerate?: (prompt: string, context: string) => void;
   suggestedCode?: string | null;
-  onApplySuggestion?: (code: string) => void;
   autoRun?: boolean;
+  autoPreview?: boolean;
   onOutputCapture?: (output: string) => void;
+  refreshKey?: number | string;
 }
 
 const LANGUAGE_EXTENSIONS: Record<string, CodeLanguage> = {
@@ -131,30 +124,16 @@ const LANGUAGE_LABELS: Record<CodeLanguage, string> = {
   unknown: 'Plain Text',
 };
 
-const LANGUAGE_COMMANDS: Record<CodeLanguage, string> = {
-  python: 'python3',
-  javascript: 'node',
-  typescript: 'npx ts-node',
-  json: 'cat',
-  markdown: 'cat',
-  html: 'open',
-  css: 'open',
-  java: 'java',
-  kotlin: 'kotlin',
-  csharp: 'dotnet run',
-  cpp: './a.out',
-  c: './a.out',
-  go: 'go run',
-  rust: 'cargo run',
-  swift: 'swift',
-  dart: 'dart',
-  php: 'php',
-  ruby: 'ruby',
-  lua: 'lua',
-  shell: 'bash',
-  sql: 'sqlite3',
-  unknown: '',
-};
+const RUNNABLE_LANGUAGES = new Set<CodeLanguage>([
+  'javascript',
+  'typescript',
+  'python',
+  'shell',
+  'json',
+  'html',
+  'css',
+  'markdown',
+]);
 
 export function detectLanguage(fileName: string): CodeLanguage {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -168,7 +147,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   onGenerate,
   suggestedCode: initialSuggestedCode,
   autoRun = false,
+  autoPreview = false,
   onOutputCapture,
+  refreshKey,
 }) => {
   const [code, setCode] = useState(initialCode);
   const [suggestedCode, setSuggestedCode] = useState<string | null>(initialSuggestedCode || null);
@@ -178,30 +159,30 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const [runOutput, setRunOutput] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const [showFileTree, setShowFileTree] = useState(false);
+  const [showPreview, setShowPreview] = useState(autoPreview);
   const [prompt, setPrompt] = useState('');
+  const [workspacePath, setWorkspacePath] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const editorParentRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
-  const sessionIdRef = useRef(crypto.randomUUID());
 
   // Update editor when initialCode prop changes (e.g., from processCodeBlocks)
   useEffect(() => {
-    if (initialCode) {
-      setCode(initialCode);
-      // Update editor view if it exists
-      if (editorViewRef.current) {
-        editorViewRef.current.dispatch({
-          changes: { from: 0, to: editorViewRef.current.state.doc.length, insert: initialCode }
-        });
-      }
+    const nextCode = initialCode ?? '';
+    setCode(nextCode);
+
+    if (editorViewRef.current) {
+      editorViewRef.current.dispatch({
+        changes: { from: 0, to: editorViewRef.current.state.doc.length, insert: nextCode }
+      });
     }
   }, [initialCode]);
 
   // Update filename when prop changes
   useEffect(() => {
-    if (initialFileName && initialFileName !== 'untitled.py') {
-      setFileName(initialFileName);
-      setLanguage(detectLanguage(initialFileName));
-    }
+    const nextFileName = initialFileName || 'untitled.py';
+    setFileName(nextFileName);
+    setLanguage(detectLanguage(nextFileName));
   }, [initialFileName]);
 
   // Auto-run code when autoRun flag is set (Amo-controlled execution)
@@ -219,6 +200,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     const lang = detectLanguage(fileName);
     setLanguage(lang);
   }, [fileName]);
+
+  useEffect(() => {
+    void workspaceService.getWorkspacePath().then(setWorkspacePath).catch(() => setWorkspacePath('./workspace'));
+  }, []);
 
   const handleFileNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
@@ -328,6 +313,23 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     }
   };
 
+  const canRun = code.trim().length > 0 && RUNNABLE_LANGUAGES.has(language);
+
+  const handleSave = async () => {
+    if (!fileName.trim()) return;
+
+    setIsSaving(true);
+    try {
+      const savedPath = await workspaceService.saveToWorkspace(fileName, code);
+      setRunOutput(`Saved to ${savedPath}`);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Save failed';
+      setRunOutput(`Save error: ${errorMsg}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleGenerate = () => {
     if (onGenerate && prompt.trim()) {
       onGenerate(prompt, code);
@@ -385,6 +387,20 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             <FolderOpen className="w-4 h-4" />
           </button>
 
+           <button
+            onClick={handleSave}
+            disabled={!fileName.trim() || isSaving}
+            className={cn(
+              "p-2 rounded-lg border transition-all",
+              fileName.trim() && !isSaving
+                ? "glass-panel border-white/10 text-white/60 hover:text-white hover:border-white/20"
+                : "bg-white/5 text-white/30 border border-white/10 cursor-not-allowed"
+            )}
+            title="Save file"
+          >
+            <Save className={cn("w-4 h-4", isSaving && "animate-pulse")} />
+          </button>
+
           <button
             onClick={handleCopy}
             className="p-2 rounded-lg glass-panel border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all"
@@ -401,15 +417,30 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             <Trash2 className="w-4 h-4" />
           </button>
           
-          <button
-            onClick={handleRun}
-            disabled={!code.trim() || isRunning}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm transition-all",
-              code.trim() && !isRunning
-                ? "bg-green-600/20 text-green-400 border border-green-500/30 hover:bg-green-600/30"
-                : "bg-white/5 text-white/30 border border-white/10 cursor-not-allowed"
-            )}
+          {(language === 'html' || language === 'javascript' || language === 'css') && (
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className={cn(
+                "p-2 rounded-lg border transition-all",
+                showPreview
+                  ? "bg-blue-600/20 border-blue-500/30 text-blue-400"
+                  : "glass-panel border-white/10 text-white/60 hover:text-white hover:border-white/20"
+              )}
+              title="Toggle preview"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+          )}
+          
+            <button
+              onClick={handleRun}
+              disabled={!canRun || isRunning}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm transition-all",
+                canRun && !isRunning
+                  ? "bg-green-600/20 text-green-400 border border-green-500/30 hover:bg-green-600/30"
+                  : "bg-white/5 text-white/30 border border-white/10 cursor-not-allowed"
+              )}
           >
             <Play className={cn("w-4 h-4", isRunning && "animate-pulse")} />
             {isRunning ? 'Running...' : 'Run'}
@@ -435,18 +466,19 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 setShowFileTree(false);
               }}
               currentFile={fileName}
+              refreshKey={refreshKey}
             />
           </div>
         )}
 
         {/* Editor Panel */}
-        <div className="flex-1 flex flex-col glass-panel border border-white/10 rounded-2xl overflow-hidden">
+        <div className={cn("flex flex-col glass-panel border border-white/10 rounded-2xl overflow-hidden", showPreview ? "w-1/2" : "flex-1")}>
           <div className="px-4 py-2 border-b border-white/10 bg-white/5 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xs text-white/40 font-mono">{fileName || 'untitled'}</span>
               {showFileTree && (
                 <span className="text-[9px] text-white/20 truncate max-w-[200px]">
-                  {getWorkspacePath()}
+                  {workspacePath}
                 </span>
               )}
             </div>
@@ -458,7 +490,29 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           />
         </div>
 
-        <div className="w-80 flex flex-col gap-3">
+        {/* Preview Panel */}
+        {showPreview && (
+          <div className="w-1/2 flex flex-col glass-panel border border-white/10 rounded-2xl overflow-hidden">
+            <div className="px-4 py-2 border-b border-white/10 bg-white/5 flex items-center justify-between flex-shrink-0">
+              <span className="text-xs text-white/40 font-mono">Preview</span>
+              <button 
+                onClick={() => setShowPreview(false)}
+                className="text-white/40 hover:text-white"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">
+              <CodePreview 
+                code={code} 
+                language={language} 
+                onClose={() => setShowPreview(false)} 
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="w-80 flex flex-col gap-3 flex-shrink-0">
           <div className="flex-1 flex flex-col glass-panel border border-white/10 rounded-2xl overflow-hidden">
             <div className="px-4 py-2 border-b border-white/10 bg-white/5 flex items-center justify-between">
               <span className="text-xs text-white/40 font-mono">Output</span>
