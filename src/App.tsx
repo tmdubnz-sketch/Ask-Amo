@@ -3237,29 +3237,19 @@ export default function App({ ready = true }: AppProps) {
         />
 
         <main className="flex-1 flex flex-col relative overflow-hidden">
-          {/* New grouped navigation */}
+          {/* Navigation */}
           <div className="border-b border-white/10 px-4 sm:px-6 py-3">
             <div className="flex items-center gap-2 max-w-none overflow-x-auto custom-scrollbar">
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {/* Primary Views */}
-                <button onClick={() => setActiveView('chat')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'chat' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Chat</button>
-                <button onClick={() => setActiveView('preview')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'preview' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Preview</button>
-                <button onClick={() => { setActiveView('ide'); setActiveIdeTab('editor'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'ide' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>IDE</button>
-                <button onClick={() => { setActiveView('learn'); setActiveLearnTab('vocabulary'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'learn' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Learn</button>
-                <button onClick={() => setActiveView('web')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'web' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Web</button>
-                <button onClick={() => setActiveView('settings')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'settings' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Settings</button>
-              </div>
-              
-              {/* Sub-tabs for IDE */}
-              {activeView === 'ide' && (
-                <div className="flex items-center gap-1 ml-4 pl-4 border-l border-white/10">
-                  <button onClick={() => setActiveIdeTab('editor')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'editor' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Editor</button>
-                  <button onClick={() => setActiveIdeTab('terminal')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'terminal' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Terminal</button>
-                  <button onClick={() => setActiveIdeTab('files')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'files' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Files</button>
-                  <button onClick={() => setActiveIdeTab('debug')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'debug' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Debug</button>
-                  <button onClick={() => setActiveIdeTab('run')} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", activeIdeTab === 'run' ? "bg-white/10 text-white" : "text-white/40 hover:text-white")}>Run</button>
-                </div>
-              )}
+              <button onClick={() => setActiveView('chat')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'chat' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Chat</button>
+              <button onClick={() => { setActiveView('ide'); setActiveIdeTab('editor'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'ide' && activeIdeTab === 'editor' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Editor</button>
+              <button onClick={() => { setActiveView('ide'); setActiveIdeTab('terminal'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'ide' && activeIdeTab === 'terminal' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Terminal</button>
+              <button onClick={() => { setActiveView('ide'); setActiveIdeTab('files'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'ide' && activeIdeTab === 'files' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Files</button>
+              <button onClick={() => { setActiveView('ide'); setActiveIdeTab('debug'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'ide' && activeIdeTab === 'debug' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Debug</button>
+              <button onClick={() => { setActiveView('ide'); setActiveIdeTab('run'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'ide' && activeIdeTab === 'run' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Run</button>
+              <button onClick={() => setActiveView('preview')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'preview' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Preview</button>
+              <button onClick={() => { setActiveView('learn'); setActiveLearnTab('vocabulary'); }} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'learn' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Learn</button>
+              <button onClick={() => setActiveView('web')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'web' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Web</button>
+              <button onClick={() => setActiveView('settings')} className={cn("px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap", activeView === 'settings' ? "bg-[#ff4e00] text-white shadow-lg shadow-[#ff4e00]/25" : "text-white/60 hover:text-white hover:bg-white/5")}>Settings</button>
               
               {/* Sub-tabs for Learn */}
               {activeView === 'learn' && (
