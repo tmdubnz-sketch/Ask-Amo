@@ -1,9 +1,5 @@
 package com.askamo.mobile;
 
-import android.os.Handler;
-import android.os.Looper;
-import android.util.Pair;
-
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -21,14 +17,13 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.regex.Matcher;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 @CapacitorPlugin(name = "NativeTerminal")
 public class NativeTerminalPlugin extends Plugin {
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Map<String, SessionData> sessions = new ConcurrentHashMap<>();
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     
     private static final int BUFFER_SIZE = 4096;
     private static final Pattern ESCAPE_PATTERN = Pattern.compile("\u001B\\[[0-9;]*[A-Za-z]");
@@ -425,10 +420,8 @@ public class NativeTerminalPlugin extends Plugin {
         return cleaned;
     }
 
-    @Override
-    protected void handleDestroy() {
-        super.handleDestroy();
-        // Clean up all sessions
+    public void destroy() {
+        // Clean up all sessions on plugin destroy
         for (String sessionId : sessions.keySet()) {
             destroySessionInternal(sessionId);
         }
