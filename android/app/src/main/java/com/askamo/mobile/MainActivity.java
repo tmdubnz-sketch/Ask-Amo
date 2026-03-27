@@ -20,6 +20,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NativePiperVoicePlugin.class);
         registerPlugin(SecretStorePlugin.class);
         registerPlugin(NativeSpeechRecognitionPlugin.class);
+        registerPlugin(NativePackagePlugin.class);
         super.onCreate(savedInstanceState);
         enableImmersiveMode();
     }
