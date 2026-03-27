@@ -474,7 +474,6 @@ export function Terminal() {
               Reconnect
             </button>
           )}
-          <span className="text-white/30">Ctrl+C interrupt</span>
         </div>
       </div>
 
